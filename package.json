@@ -1,0 +1,27 @@
+{
+  "name": "chatgpt-openai-proxy",
+  "version": "0.1.0",
+  "description": "OpenAI-compatible proxy that routes requests to the ChatGPT Plan (Codex) Responses API using OAuth.",
+  "type": "module",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "login": "bun run src/index.ts login",
+    "logout": "bun run src/index.ts logout",
+    "status": "bun run src/index.ts status",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}
