@@ -60,8 +60,10 @@ async function runStatus(): Promise<void> {
 
 async function runServer(): Promise<void> {
   const app = buildApp();
-  console.log(`Proxy OpenAI <- ChatGPT Plan escutando em http://localhost:${config.port}`);
-  Bun.serve({ port: config.port, fetch: app.fetch });
+  const server = Bun.serve({ port: config.port, fetch: app.fetch });
+
+  console.log(`Proxy OpenAI <- ChatGPT Plan escutando em http://localhost:${server.port}`);
+  console.log(`Acesse http://localhost:${server.port}/login para fazer login com sua conta ChatGPT.`);
 }
 
 function printHelp(): void {
