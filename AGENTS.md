@@ -54,7 +54,7 @@
 
 ## Docker e deploy
 
-- `docker-compose.yml` usa `ghcr.io/lucasliet/chatgptopenaiproxy:latest` com `pull_policy: always`, publica só `3000:3000` e monta `./data:/root/.config/chatgpt-proxy`.
+- `docker-compose.yml` usa `ghcr.io/lucasliet/chatgpt-openai-proxy:latest` com `pull_policy: always`, publica só `3000:3000` e monta `./data:/root/.config/chatgpt-proxy`.
 - O container deve logar a rota `http://localhost:3000/login` no startup; mantenha essa orientação visível para usuários de Compose.
 - `docker compose up -d` usa a imagem publicada; só use build local quando estiver validando o Dockerfile.
 - Workflow de publish gera tags GHCR por run number, `latest` em `main`, semver em tags `v*.*.*` e `sha-<short>`.

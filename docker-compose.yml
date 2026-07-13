@@ -1,6 +1,6 @@
 services:
   chatgpt-proxy:
-    image: ghcr.io/lucasliet/chatgptopenaiproxy:latest
+    image: ghcr.io/lucasliet/chatgpt-openai-proxy:latest
     pull_policy: always
     container_name: chatgpt-openai-proxy
     ports:

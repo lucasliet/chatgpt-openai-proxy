@@ -100,7 +100,7 @@ O proxy roda em container e oferece **3 modos de autenticação**. O modo web (r
 Basta expor a porta 3000. O login acontece no browser:
 
 ```bash
-docker run -d -p 3000:3000 -v ./data:/root/.config/chatgpt-proxy ghcr.io/lucasliet/chatgptopenaiproxy:latest
+docker run -d -p 3000:3000 -v ./data:/root/.config/chatgpt-proxy ghcr.io/lucasliet/chatgpt-openai-proxy:latest
 ```
 
 Depois:
@@ -119,7 +119,7 @@ Se não há browser no host, autentique numa máquina com browser (rodando o pro
 
 ```bash
 # Na máquina com browser:
-bun start  # ou docker run -p 3000:3000 ghcr.io/lucasliet/chatgptopenaiproxy:latest
+bun start  # ou docker run -p 3000:3000 ghcr.io/lucasliet/chatgpt-openai-proxy:latest
 # → faça login em /login e copie o conteúdo de data/credentials.json
 cat data/credentials.json
 ```
@@ -132,7 +132,7 @@ docker run -d \
   -e CHATGPT_REFRESH_TOKEN='v1.MjQ1Nj...' \
   -e CHATGPT_ACCOUNT_ID='org-...' \
   -e CHATGPT_EXPIRES_AT='1748544000000' \
-  ghcr.io/lucasliet/chatgptopenaiproxy:latest
+  ghcr.io/lucasliet/chatgpt-openai-proxy:latest
 ```
 
 ### Modo 3: `--network host` (Linux)
@@ -140,7 +140,7 @@ docker run -d \
 Evita problemas de port-forward; o callback `localhost:1455` funciona naturalmente:
 
 ```bash
-docker run --network host ghcr.io/lucasliet/chatgptopenaiproxy:latest
+docker run --network host ghcr.io/lucasliet/chatgpt-openai-proxy:latest
 ```
 
 ### docker-compose
@@ -150,7 +150,7 @@ docker compose up -d
 docker compose logs -f chatgpt-proxy
 ```
 
-O container usa `ghcr.io/lucasliet/chatgptopenaiproxy:latest` e imprime nos logs a rota `http://localhost:3000/login` para autenticação. Veja `docker-compose.yml` para portas e volume padrão.
+O container usa `ghcr.io/lucasliet/chatgpt-openai-proxy:latest` e imprime nos logs a rota `http://localhost:3000/login` para autenticação. Veja `docker-compose.yml` para portas e volume padrão.
 
 ## Modelo de autenticação
 
