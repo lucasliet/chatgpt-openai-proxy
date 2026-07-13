@@ -4,7 +4,6 @@ import { refreshAccessToken } from "../../auth/oauth-client";
 import { loadCredentials, saveCredentials } from "../../auth/token-store";
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
-const REDIRECT_PATH = "http://localhost:1455";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -76,7 +75,7 @@ function unauthorized(c: Context): Response {
   return c.json(
     {
       error: {
-        message: `No ChatGPT credentials found. Run 'bun run src/index.ts login' or set CHATGPT_ACCESS_TOKEN. (callback at ${REDIRECT_PATH})`,
+        message: "No ChatGPT credentials found. Open /login in your browser to authenticate, or set CHATGPT_ACCESS_TOKEN env vars.",
         type: "authentication_error",
         code: "no_credentials",
       },

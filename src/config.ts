@@ -20,6 +20,9 @@ export const config = {
   get proxyHome() {
     return env.CHATGPT_PROXY_HOME ?? join(homedir(), ".config", "chatgpt-proxy");
   },
+  get cookieSecret() {
+    return env.COOKIE_SECRET ?? "chatgpt-proxy-dev-secret";
+  },
   oauth: {
     clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
     authUrl: "https://auth.openai.com/oauth/authorize",

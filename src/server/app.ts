@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { createCodexClient } from "../codex/client";
+import { loginRoutes } from "./auth/login-routes";
 import { ensureToken } from "./middleware/ensure-token";
 import { chatCompletionsRoutes } from "./routes/chat-completions";
 import { modelsRoutes } from "./routes/models";
@@ -17,6 +18,8 @@ export function buildApp(): Hono {
   const codexClient = createCodexClient();
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  app.route("/login", loginRoutes());
 
   app.route("/v1/models", modelsRoutes());
 

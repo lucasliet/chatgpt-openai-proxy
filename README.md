@@ -8,6 +8,9 @@ Permite que qualquer cliente OpenAI-existente (biblioteca `openai`, Cursor, Cont
 
 | Rota                        | Descrição                                                         |
 | --------------------------- | ----------------------------------------------------------------- |
+| `GET /login`                | Tela de login web (UI HTML) para autenticar via browser.          |
+| `POST /login/start`         | Inicia o fluxo OAuth PKCE, retorna a URL de autorização.          |
+| `POST /login/complete`      | Finaliza o login recebendo a URL de callback colada pelo usuário.  |
 | `POST /v1/chat/completions` | Converte Chat Completions → Responses API e devolve em formato OpenAI. |
 | `POST /v1/responses`        | Passthrough direto para o Codex (sem conversão).                  |
 | `GET /v1/models`            | Lista de modelos permitidos no ChatGPT Plan.                      |
@@ -23,14 +26,14 @@ Permite que qualquer cliente OpenAI-existente (biblioteca `openai`, Cursor, Cont
 ```bash
 bun install
 
-# 1. Autenticar uma vez (abre o navegador)
-bun run login
-
-# 2. Verificar estado das credenciais
-bun run status
-
-# 3. Subir o proxy
+# 1. Subir o proxy
 bun start
+
+# 2. Autenticar via browser: abra http://localhost:3000/login
+#    (ou use o CLI: bun run login)
+
+# 3. Verificar estado das credenciais
+bun run status
 ```
 
 Aponte seu cliente OpenAI para `http://localhost:3000`:
@@ -82,6 +85,7 @@ Comandos:
 | `OAUTH_CALLBACK_PORT`    | `1455`                                       | Porta do callback OAuth (whitelisted).     |
 | `CODEX_BASE_URL`         | `https://chatgpt.com/backend-api/codex`      | Endpoint do Codex.                         |
 | `CHATGPT_PROXY_HOME`     | `~/.config/chatgpt-proxy`                    | Diretório base das credenciais.            |
+| `COOKIE_SECRET`          | `chatgpt-proxy-dev-secret`                   | Segredo do cookie PKCE do login web.       |
 | `CHATGPT_ACCESS_TOKEN`   | —                                            | Token via env (Docker headless).           |
 | `CHATGPT_REFRESH_TOKEN`  | —                                            | Refresh token via env (Docker headless).   |
 | `CHATGPT_ACCOUNT_ID`     | —                                            | Account id via env (Docker headless).      |
@@ -89,21 +93,39 @@ Comandos:
 
 ## Docker
 
-O proxy pode rodar em container de três formas. **Variável chave: `OAUTH_CALLBACK_PORT=1455`** — essa porta é whitelisted no fluxo OAuth do Codex e não pode ser alterada.
+O proxy roda em container e oferece **3 modos de autenticação**. O modo web (recomendado) funciona em qualquer ambiente — não precisa de porta 1455 nem de CLI dentro do container.
 
-### Modo 1: Importar tokens (recomendado para Docker headless)
+### Modo 1: Login web (recomendado para qualquer ambiente)
 
-Autentique numa máquina com browser (rodando o CLI local) e injete os tokens no container via env vars:
+Basta expor a porta 3000. O login acontece no browser:
 
 ```bash
-# Na máquina local com browser:
-bun run login
-bun run status  # mostra account_id e expiry
-cat ~/.config/chatgpt-proxy/credentials.json
+docker run -d -p 3000:3000 -v ./data:/root/.config/chatgpt-proxy chatgpt-openai-proxy
+```
+
+Depois:
+
+1. Abra `http://localhost:3000/login` no navegador.
+2. Clique em **"Iniciar login com ChatGPT"** — o proxy gera a URL de autorização.
+3. Abra o link e autorize no ChatGPT. O browser tentará redirecionar para `localhost:1455/auth/callback?code=...&state=...` e pode mostrar erro de conexão — **isso é normal**.
+4. Copie a **URL completa** da barra de endereços do navegador.
+5. Cole a URL no campo da tela de login e clique em **"Concluir login"**.
+
+As credenciais são persistidas no volume `./data`, então o login é feito apenas uma vez.
+
+### Modo 2: Importar tokens via env (headless puro)
+
+Se não há browser no host, autentique numa máquina com browser (rodando o proxy localmente) e injete os tokens no container via env vars:
+
+```bash
+# Na máquina com browser:
+bun start  # ou docker run -p 3000:3000 ...
+# → faça login em /login e copie o conteúdo de data/credentials.json
+cat data/credentials.json
 ```
 
 ```bash
-# No host headless via Docker:
+# No host headless:
 docker run -d \
   -p 3000:3000 \
   -e CHATGPT_ACCESS_TOKEN='eyJ...' \
@@ -113,21 +135,9 @@ docker run -d \
   chatgpt-openai-proxy
 ```
 
-### Modo 2: OAuth no container com port-forward
+### Modo 3: `--network host` (Linux)
 
-Exponha ambas as portas. O fluxo OAuth roda dentro do container, mas **você abre a URL manualmente no browser do host** (o container não tem GUI):
-
-```bash
-docker run --rm -it -p 3000:3000 -p 1455:1455 chatgpt-openai-proxy login
-# → copie a URL impressa e cole no navegador
-# → o callback volta via port-forward para a porta 1455 do container
-
-docker run -d -p 3000:3000 -p 1455:1455 -v ./data:/root/.config/chatgpt-proxy chatgpt-openai-proxy
-```
-
-### Modo 3: `--network host`
-
-Para evitar problemas de port-forward em ambientes Linux:
+Evita problemas de port-forward; o callback `localhost:1455` funciona naturalmente:
 
 ```bash
 docker run --network host chatgpt-openai-proxy
@@ -139,19 +149,20 @@ docker run --network host chatgpt-openai-proxy
 docker compose up -d --build
 ```
 
-Veja `docker-compose.yml` para as portas e volume padrão. Descomente as linhas de env vars para o modo headless.
+Acesse `http://localhost:3000/login` para autenticar. Veja `docker-compose.yml` para portas e volume padrão.
 
 ## Modelo de autenticação
 
 O fluxo OAuth 2.0 PKCE é o mesmo usado pelo Codex CLI:
 
 1. Gera `code_verifier` + `code_challenge` (S256) + `state` aleatório.
-2. Sobe um servidor HTTP em `http://localhost:1455/auth/callback`.
-3. Abre `https://auth.openai.com/oauth/authorize?...` com:
+2. Monta `https://auth.openai.com/oauth/authorize?...` com:
    - `client_id=app_EMoamEEZ73f0CkXaXp7hrann`
    - `codex_cli_simplified_flow=true`
    - `originator=codex_cli_rs`
-4. No callback, valida `state` (CSRF) e troca `code` por tokens.
+   - `redirect_uri=http://localhost:1455/auth/callback` (whitelisted)
+3. Usuário autoriza no ChatGPT → browser redireciona para `localhost:1455/auth/callback?code=...&state=...`.
+4. **Modo web:** o usuário cola essa URL na tela `/login` → o proxy valida `state` (CSRF), troca `code` por tokens. **Modo CLI:** o proxy captura automaticamente via servidor na porta 1455.
 5. Extrai `chatgpt_account_id` do `id_token` JWT.
 6. Persiste `access_token`, `refresh_token`, `expires_at`, `account_id`.
 
@@ -174,11 +185,12 @@ Outro processo (provavelmente o Codex CLI) está usando a porta. Feche-o ou ajus
 
 ### `connection refused` no callback OAuth dentro de Docker
 
-O browser do host não alcança o container. Soluções:
+**Isso é esperado no modo web.** O browser tenta abrir `localhost:1455` mas o container não está ouvindo essa porta — a solução é copiar a URL completa da barra de endereços e colar na tela de `/login`. Veja "Modo 1: Login web" acima.
 
-- `docker run -p 1455:1455 ...` para port-forward da porta de callback.
-- Ou `--network host` (Linux).
-- Ou use o **Modo 1** (importação manual de tokens).
+Alternativas:
+
+- `--network host` (Linux) — o callback funciona naturalmente.
+- Modo env vars (importar tokens manuais).
 
 ### `400 Bad Request: Instructions are not valid`
 
