@@ -1,83 +1,85 @@
-"""Testes do store de credenciais: precedência env > banco e refresh."""
+"""Testes do store de credenciais por usuário e do refresh."""
 
 import time
 
-import pytest
 import respx
 from httpx import Response
 from sqlmodel import Session
 
 from app.config import get_settings
 from app.credentials import (
-    delete_credentials,
-    get_valid_credentials,
-    load_credentials,
-    save_credentials,
+    credentials_from_user,
+    get_valid_user_credentials,
+    save_oauth_credentials,
 )
 from app.database import get_engine
+from app.models import User
 from app.oauth import Credentials
+
+from conftest import create_api_key, create_user_with_credentials
 
 
 def _db_session() -> Session:
     return Session(get_engine())
 
 
-def _credentials(expires_at: int) -> Credentials:
+def _make_credentials(account_id: str = "acc-x", expires_at: int | None = None) -> Credentials:
     return Credentials(
-        access_token="at-db",
-        refresh_token="rt-db",
-        account_id="acc-db",
-        expires_at=expires_at,
+        access_token=f"at-{account_id}",
+        refresh_token=f"rt-{account_id}",
+        account_id=account_id,
+        expires_at=expires_at or int((time.time() + 3600) * 1000),
     )
 
 
-class TestPrecedencia:
-    def test_env_tem_precedencia_sobre_db(self, client):
+def _get_user(user_id: int) -> User:
+    with _db_session() as session:
+        return session.get(User, user_id)
+
+
+class TestCredentialsFromUser:
+    def test_sem_access_token_retorna_none(self, client):
+        created = client.post("/admin/users", json={"name": "vazio"}, headers={"X-Admin-Key": "sk-admin-test"})
+        user = _get_user(created.json()["id"])
+        assert credentials_from_user(user) is None
+
+    def test_com_access_token_monta_credentials(self, client):
+        user_id = create_user_with_credentials(client, "fulano", account_id="acc-fulano")
+        credentials = credentials_from_user(_get_user(user_id))
+        assert credentials is not None
+        assert credentials.access_token == "at-acc-fulano"
+        assert credentials.account_id == "acc-fulano"
+
+
+class TestSaveOauthCredentials:
+    def test_persiste_tokens_e_last_login(self, client):
+        created = client.post("/admin/users", json={"name": "novo"}, headers={"X-Admin-Key": "sk-admin-test"})
+        user_id = created.json()["id"]
         with _db_session() as session:
-            save_credentials(session, _credentials(int((time.time() + 3600) * 1000)))
-            loaded = load_credentials(session, get_settings())
-        assert loaded is not None
-        credentials, source = loaded
-        assert source == "env"
-        assert credentials.access_token == "access-token-env"
-
-    def test_db_quando_sem_env(self, client_sem_env_creds):
-        with _db_session() as session:
-            save_credentials(session, _credentials(int((time.time() + 3600) * 1000)))
-            loaded = load_credentials(session, get_settings())
-        assert loaded is not None
-        credentials, source = loaded
-        assert source == "db"
-        assert credentials.access_token == "at-db"
-
-    def test_expires_at_nao_numerico_env_ignorado(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/x.db")
-        monkeypatch.setenv("CHATGPT_ACCESS_TOKEN", "at")
-        monkeypatch.setenv("CHATGPT_REFRESH_TOKEN", "rt")
-        monkeypatch.setenv("CHATGPT_ACCOUNT_ID", "acc")
-        monkeypatch.setenv("CHATGPT_EXPIRES_AT", "nao-numero")
-        from app.config import get_settings as gs
-
-        gs.cache_clear()
-        from app.credentials import _env_credentials
-
-        assert _env_credentials(gs()) is None
-
-    def test_delete_credentials(self, client_sem_env_creds):
-        with _db_session() as session:
-            save_credentials(session, _credentials(int((time.time() + 3600) * 1000)))
-            delete_credentials(session)
-            assert load_credentials(session, get_settings()) is None
+            user = session.get(User, user_id)
+            save_oauth_credentials(session, user, _make_credentials("acc-novo"))
+        user = _get_user(user_id)
+        assert user.access_token == "at-acc-novo"
+        assert user.account_id == "acc-novo"
+        assert user.last_login_at is not None
 
 
 class TestRefresh:
-    @respx.mock
-    async def test_refresh_quando_perto_da_expiracao(self, client_sem_env_creds):
-        settings = get_settings()
-        expirando = int((time.time() + 60) * 1000)  # expira em 1 min
+    async def test_token_longo_nao_refresca(self, client):
+        user_id = create_user_with_credentials(client, "valido", account_id="acc-valido")
         with _db_session() as session:
-            save_credentials(session, _credentials(expirando))
+            credentials = await get_valid_user_credentials(
+                session, session.get(User, user_id), get_settings()
+            )
+        assert credentials is not None
+        assert credentials.access_token == "at-acc-valido"
 
+    @respx.mock
+    async def test_refresh_quando_perto_da_expiracao(self, client):
+        settings = get_settings()
+        user_id = create_user_with_credentials(
+            client, "expirando", account_id="acc-exp", expires_in_s=60
+        )
         respx.post(settings.oauth_token_url).mock(
             return_value=Response(
                 200,
@@ -90,60 +92,72 @@ class TestRefresh:
         )
 
         with _db_session() as session:
-            credentials = await get_valid_credentials(session, settings)
+            user = session.get(User, user_id)
+            credentials = await get_valid_user_credentials(session, user, settings)
 
+        assert credentials is not None
         assert credentials.access_token == "at-novo"
         assert credentials.refresh_token == "rt-novo"
-        assert credentials.account_id == "acc-db"  # account id é preservado
+        assert credentials.account_id == "acc-exp"  # account id preservado
 
-        # Persistido no banco.
-        with _db_session() as session:
-            loaded = load_credentials(session, settings)
-        assert loaded is not None
-        assert loaded[0].access_token == "at-novo"
-
-    @respx.mock
-    async def test_refresh_env_nao_persiste(self, client):
-        settings = get_settings()
-        original_expires = settings.chatgpt_expires_at
-        original_access = settings.chatgpt_access_token
-        settings.chatgpt_expires_at = str(int((time.time() + 60) * 1000))
-        try:
-            respx.post(settings.oauth_token_url).mock(
-                return_value=Response(200, json={"access_token": "at-env-novo", "expires_in": 3600})
-            )
-            with _db_session() as session:
-                credentials = await get_valid_credentials(session, settings)
-            assert credentials.access_token == "at-env-novo"
-            # Nada gravado no banco: a origem continua "env".
-            with _db_session() as session:
-                loaded = load_credentials(session, settings)
-            assert loaded is not None
-            assert loaded[1] == "env"
-        finally:
-            settings.chatgpt_expires_at = original_expires
-            settings.chatgpt_access_token = original_access
+        # Persistido na linha do usuário.
+        user = _get_user(user_id)
+        assert user.access_token == "at-novo"
+        assert user.refresh_token == "rt-novo"
 
     @respx.mock
-    async def test_refresh_falha_mantem_credencial_antiga(self, client_sem_env_creds):
+    async def test_refresh_falha_mantem_token_antigo(self, client):
         settings = get_settings()
-        expirando = int((time.time() + 60) * 1000)
-        with _db_session() as session:
-            save_credentials(session, _credentials(expirando))
-
+        user_id = create_user_with_credentials(
+            client, "falha", account_id="acc-falha", expires_in_s=60
+        )
         respx.post(settings.oauth_token_url).mock(return_value=Response(400, text="invalid_grant"))
 
         with _db_session() as session:
-            credentials = await get_valid_credentials(session, settings)
-        assert credentials.access_token == "at-db"
+            user = session.get(User, user_id)
+            credentials = await get_valid_user_credentials(session, user, settings)
 
-    async def test_token_longo_nao_refresca(self, client_sem_env_creds):
+        assert credentials is not None
+        assert credentials.access_token == "at-acc-falha"
+
+
+class TestRefreshIsoladoPorUsuario:
+    @respx.mock
+    async def test_refresh_de_um_nao_afeta_outro(self, client):
         settings = get_settings()
-        with _db_session() as session:
-            save_credentials(session, _credentials(int((time.time() + 3600) * 1000)))
-            credentials = await get_valid_credentials(session, settings)
-        assert credentials.access_token == "at-db"
+        user_a = create_user_with_credentials(client, "user-a", account_id="acc-a", expires_in_s=60)
+        user_b = create_user_with_credentials(client, "user-b", account_id="acc-b", expires_in_s=60)
 
-    async def test_sem_credenciais_retorna_none(self, client_sem_env_creds):
+        respx.post(settings.oauth_token_url).mock(
+            return_value=Response(200, json={"access_token": "at-novo-a", "expires_in": 3600})
+        )
+
         with _db_session() as session:
-            assert await get_valid_credentials(session, get_settings()) is None
+            await get_valid_user_credentials(session, session.get(User, user_a), settings)
+
+        assert _get_user(user_a).access_token == "at-novo-a"
+        assert _get_user(user_b).access_token == "at-acc-b"
+
+
+class TestApiKeySemCredencial:
+    def test_key_de_usuario_sem_oauth_recebe_401(self, client):
+        created = client.post("/admin/users", json={"name": "sem-oauth"}, headers={"X-Admin-Key": "sk-admin-test"})
+        key = create_api_key(client, created.json()["id"])
+
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "gpt-5.1-codex", "messages": [{"role": "user", "content": "oi"}]},
+        )
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "no_credentials"
+
+    def test_listagem_admin_mostra_status_da_credencial(self, client):
+        create_user_with_credentials(client, "com-oauth", account_id="acc-conta-123")
+        client.post("/admin/users", json={"name": "sem-oauth"}, headers={"X-Admin-Key": "sk-admin-test"})
+
+        users = client.get("/admin/users", headers={"X-Admin-Key": "sk-admin-test"}).json()["users"]
+        by_name = {u["name"]: u for u in users}
+        assert by_name["com-oauth"]["credential"]["authenticated"] is True
+        assert by_name["com-oauth"]["credential"]["account_id"] == "acc-...-123"
+        assert by_name["sem-oauth"]["credential"]["authenticated"] is False

@@ -1,4 +1,4 @@
-"""Administração de usuários, API keys e credenciais — prefixo /admin.
+"""Administração de usuários e API keys — prefixo /admin.
 
 Todas as rotas exigem o header ``X-Admin-Key`` (env ``ADMIN_API_KEY``). Se a
 env não for definida, uma chave aleatória é gerada no boot e impressa nos
@@ -6,17 +6,21 @@ logs (visível no dashboard de logs do FastAPI Cloud).
 
 Endpoints:
 
-- ``GET  /admin/users`` — lista usuários com suas keys.
-- ``POST /admin/users`` — cria usuário (body: ``{"name": ...}``).
-- ``DELETE /admin/users/{user_id}`` — remove usuário e suas keys.
+- ``GET  /admin/users`` — lista usuários (com status da credencial OAuth) e
+  suas keys.
+- ``POST /admin/users`` — cria usuário manualmente (body: ``{"name": ...}``);
+  sem credencial OAuth até que o usuário complete o /login.
+- ``DELETE /admin/users/{user_id}`` — remove usuário, credenciais e keys.
 - ``GET  /admin/users/{user_id}/keys`` — lista keys do usuário.
 - ``POST /admin/users/{user_id}/keys`` — cria key (body opcional
   ``{"label": ...}``); a chave completa é retornada **uma única vez**.
 - ``POST /admin/keys/{key_id}/revoke`` — revoga uma key.
-- ``GET  /admin/credentials`` — estado das credenciais ChatGPT (mascarado).
-- ``DELETE /admin/credentials`` — remove as credenciais salvas no banco.
+
+Contas costumam ser criadas pelo próprio fluxo de login (``/login``): o
+usuário autentica a assinatura ChatGPT via OAuth e recebe a API key na hora.
 """
 
+import time
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -24,7 +28,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from ..credentials import delete_credentials, load_credentials
 from ..database import get_session
 from ..models import ApiKey, User
 from ..security import (
@@ -51,6 +54,31 @@ def _mask(value: str) -> str:
     return f"{value[:4]}...{value[-4:]}"
 
 
+def _credential_status(user: User) -> dict:
+    if not user.access_token:
+        return {"authenticated": False}
+    now = int(time.time() * 1000)
+    return {
+        "authenticated": True,
+        "account_id": _mask(user.account_id),
+        "expires_at": user.expires_at,
+        "expired": user.expires_at <= now,
+        "has_refresh_token": bool(user.refresh_token),
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+    }
+
+
+def _key_json(key: ApiKey) -> dict:
+    return {
+        "id": key.id,
+        "prefix": key.prefix,
+        "label": key.label,
+        "created_at": key.created_at.isoformat(),
+        "revoked_at": key.revoked_at.isoformat() if key.revoked_at else None,
+        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
+    }
+
+
 @router.get("/users")
 def list_users(session: Annotated[Session, Depends(get_session)]):
     users = session.exec(select(User)).all()
@@ -65,17 +93,8 @@ def list_users(session: Annotated[Session, Depends(get_session)]):
                 "id": user.id,
                 "name": user.name,
                 "created_at": user.created_at.isoformat(),
-                "keys": [
-                    {
-                        "id": key.id,
-                        "prefix": key.prefix,
-                        "label": key.label,
-                        "created_at": key.created_at.isoformat(),
-                        "revoked_at": key.revoked_at.isoformat() if key.revoked_at else None,
-                        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
-                    }
-                    for key in keys_by_user.get(user.id, [])
-                ],
+                "credential": _credential_status(user),
+                "keys": [_key_json(key) for key in keys_by_user.get(user.id, [])],
             }
             for user in users
         ]
@@ -115,20 +134,7 @@ def list_user_keys(user_id: int, session: Annotated[Session, Depends(get_session
         raise HTTPException(status_code=404, detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}})
 
     keys = session.exec(select(ApiKey).where(ApiKey.user_id == user_id)).all()
-    return {
-        "user_id": user_id,
-        "keys": [
-            {
-                "id": key.id,
-                "prefix": key.prefix,
-                "label": key.label,
-                "created_at": key.created_at.isoformat(),
-                "revoked_at": key.revoked_at.isoformat() if key.revoked_at else None,
-                "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
-            }
-            for key in keys
-        ],
-    }
+    return {"user_id": user_id, "keys": [_key_json(key) for key in keys]}
 
 
 @router.post("/users/{user_id}/keys", status_code=status.HTTP_201_CREATED)
@@ -168,30 +174,3 @@ def revoke_key(key_id: int, session: Annotated[Session, Depends(get_session)]):
     session.add(api_key)
     session.commit()
     return {"id": api_key.id, "revoked_at": api_key.revoked_at.isoformat()}
-
-
-@router.get("/credentials")
-def credentials_status(session: Annotated[Session, Depends(get_session)]):
-    from ..config import get_settings
-
-    settings = get_settings()
-    loaded = load_credentials(session, settings)
-    if loaded is None:
-        return {"configured": False}
-
-    credentials, source = loaded
-    import time
-
-    return {
-        "configured": True,
-        "source": source,
-        "account_id": _mask(credentials.account_id),
-        "expires_at": credentials.expires_at,
-        "expired": credentials.expires_at <= int(time.time() * 1000),
-    }
-
-
-@router.delete("/credentials", status_code=status.HTTP_204_NO_CONTENT)
-def credentials_delete(session: Annotated[Session, Depends(get_session)]):
-    delete_credentials(session)
-    return None

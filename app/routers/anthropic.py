@@ -30,7 +30,7 @@ from ..converters.anthropic import (
 from ..converters.chat_completions import chat_to_responses, responses_to_chat
 from ..converters.streams import responses_events_to_chat_chunks
 from ..database import get_session
-from ..deps import AuthContext, require_api_key, require_credentials
+from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
 from .common import upstream_error_response
 
@@ -42,6 +42,7 @@ async def create_message(
     request: Request,
     auth: Annotated[AuthContext, Depends(require_api_key)],
     session: Annotated[Session, Depends(get_session)],
+    credentials: Annotated[Credentials, Depends(require_user_credentials)],
 ):
     settings = get_settings()
     engine: Engine = request.app.state.engine
@@ -57,7 +58,6 @@ async def create_message(
     chat = anthropic_to_chat(body)
     chat["model"] = upstream_model
     payload = chat_to_responses(chat)
-    credentials: Credentials = await require_credentials(request, session)
 
     if body.get("stream"):
         return StreamingResponse(

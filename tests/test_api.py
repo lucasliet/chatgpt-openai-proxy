@@ -92,9 +92,10 @@ class TestResponsesEndpoint:
         assert response.status_code == 200
         assert response.json() == RESPONSES_JSON
 
+        # A credencial usada é a DO USUÁRIO da API key (alice / acc-alice).
         request = route.calls.last.request
-        assert request.headers["Authorization"] == "Bearer access-token-env"
-        assert request.headers["ChatGPT-Account-Id"] == "acc-env-123"
+        assert request.headers["Authorization"] == "Bearer at-acc-alice"
+        assert request.headers["ChatGPT-Account-Id"] == "acc-alice"
 
     def test_passthrough_stream(self, client, auth_headers):
         respx.post(CODEX_URL).mock(
@@ -220,12 +221,12 @@ class TestAnthropicEndpoint:
         assert '"text_delta"' in response.text
         assert "event: message_stop" in response.text
 
-    def test_sem_credenciais_401(self, client_sem_env_creds, admin_headers):
-        user = client_sem_env_creds.post("/admin/users", json={"name": "carol"}, headers=admin_headers)
-        key = client_sem_env_creds.post(
+    def test_sem_credenciais_401(self, client, admin_headers):
+        user = client.post("/admin/users", json={"name": "carol"}, headers=admin_headers)
+        key = client.post(
             f"/admin/users/{user.json()['id']}/keys", json={}, headers=admin_headers
         ).json()["key"]
-        response = client_sem_env_creds.post(
+        response = client.post(
             "/v1/messages",
             headers={"Authorization": f"Bearer {key}"},
             json={"model": "gpt-5.1-codex", "max_tokens": 1, "messages": []},
@@ -241,8 +242,8 @@ class TestLoginFlow:
         state = params["state"][0]
         return f"http://localhost:1455/auth/callback?code={code}&state={state}"
 
-    def test_login_completo(self, client_sem_env_creds, admin_headers):
-        settings = client_sem_env_creds.app.state.settings
+    def _mock_token_endpoint(self, client, account_id: str = "acc-login") -> None:
+        settings = client.app.state.settings
         respx.post(settings.oauth_token_url).mock(
             return_value=Response(
                 200,
@@ -250,61 +251,100 @@ class TestLoginFlow:
                     "access_token": "at-login",
                     "refresh_token": "rt-login",
                     "expires_in": 3600,
-                    "id_token": _id_token(),
+                    "id_token": _id_token(account_id),
                 },
             )
         )
 
-        start = client_sem_env_creds.post("/login/start")
+    def test_login_completo_gera_api_key(self, client):
+        start = client.post("/login/start")
         assert start.status_code == 200
         auth_url = start.json()["authUrl"]
         assert "code_challenge=" in auth_url
 
-        complete = client_sem_env_creds.post(
+        self._mock_token_endpoint(client)
+        complete = client.post(
             "/login/complete",
             json={"callbackUrl": self._callback_url(auth_url)},
         )
         assert complete.status_code == 200, complete.text
-        assert complete.json()["success"] is True
+        data = complete.json()
+        assert data["success"] is True
+        assert data["accountId"] == "acc...ogin"
+        api_key = data["apiKey"]
+        assert api_key.startswith("sk-")
 
-        # Credenciais salvas funcionam nas rotas protegidas.
-        user = client_sem_env_creds.post("/admin/users", json={"name": "dave"}, headers=admin_headers)
-        key = client_sem_env_creds.post(
-            f"/admin/users/{user.json()['id']}/keys", json={}, headers=admin_headers
-        ).json()["key"]
-        respx.post(CODEX_URL).mock(return_value=Response(200, json=RESPONSES_JSON))
-        response = client_sem_env_creds.post(
+        # A key gerada no login funciona nas rotas protegidas e usa a
+        # credencial OAuth da conta que acabou de logar.
+        route = respx.post(CODEX_URL).mock(return_value=Response(200, json=RESPONSES_JSON))
+        response = client.post(
             "/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
+            headers={"Authorization": f"Bearer {api_key}"},
             json={"model": "gpt-5.1-codex", "messages": [{"role": "user", "content": "oi"}]},
         )
         assert response.status_code == 200
+        assert route.calls.last.request.headers["Authorization"] == "Bearer at-login"
+        assert route.calls.last.request.headers["ChatGPT-Account-Id"] == "acc-login"
 
-    def test_state_mismatch_rejeitado(self, client_sem_env_creds):
-        start = client_sem_env_creds.post("/login/start")
+    def test_relogin_revoga_key_antiga_e_gera_nova(self, client, admin_headers):
+        self._mock_token_endpoint(client)
+
+        first_start = client.post("/login/start").json()["authUrl"]
+        first = client.post(
+            "/login/complete", json={"callbackUrl": self._callback_url(first_start)}
+        ).json()
+        old_key = first["apiKey"]
+
+        second_start = client.post("/login/start").json()["authUrl"]
+        second = client.post(
+            "/login/complete", json={"callbackUrl": self._callback_url(second_start)}
+        ).json()
+        new_key = second["apiKey"]
+
+        assert new_key != old_key
+        # Key antiga revogada, nova ativa.
+        assert (
+            client.get("/v1/models", headers={"Authorization": f"Bearer {old_key}"}).status_code
+            == 401
+        )
+        assert (
+            client.get("/v1/models", headers={"Authorization": f"Bearer {new_key}"}).status_code
+            == 200
+        )
+        # Re-login não duplica o usuário.
+        users = client.get("/admin/users", headers=admin_headers).json()["users"]
+        assert len(users) == 1
+        assert users[0]["credential"]["authenticated"] is True
+
+    def test_state_mismatch_rejeitado(self, client):
+        start = client.post("/login/start")
         auth_url = start.json()["authUrl"]
         callback = self._callback_url(auth_url) + "x"  # corrompe o state
-        response = client_sem_env_creds.post("/login/complete", json={"callbackUrl": callback})
+        response = client.post("/login/complete", json={"callbackUrl": callback})
         assert response.status_code == 400
 
-    def test_callback_url_invalida(self, client_sem_env_creds):
-        client_sem_env_creds.post("/login/start")
-        response = client_sem_env_creds.post(
+    def test_callback_url_invalida(self, client):
+        client.post("/login/start")
+        response = client.post(
             "/login/complete", json={"callbackUrl": "http://localhost:1455/auth/callback"}
         )
         assert response.status_code == 400
         assert "code" in response.json()["error"]["message"]
 
-    def test_pagina_login_renderiza(self, client_sem_env_creds):
-        response = client_sem_env_creds.get("/login")
+    def test_pagina_login_renderiza(self, client):
+        response = client.get("/login")
         assert response.status_code == 200
         assert "Iniciar login com ChatGPT" in response.text
+        assert "gerar a API key" in response.text
 
 
-def _id_token() -> str:
+def _id_token(account_id: str = "acc-login") -> str:
     import base64
 
     def encode(obj: dict) -> str:
         return base64.urlsafe_b64encode(json.dumps(obj).encode()).rstrip(b"=").decode()
 
-    return f"{encode({'alg': 'none'})}.{encode({'chatgpt_account_id': 'acc-login'})}."
+    return (
+        f"{encode({'alg': 'none'})}."
+        f"{encode({'chatgpt_account_id': account_id, 'email': 'eu@exemplo.com'})}."
+    )

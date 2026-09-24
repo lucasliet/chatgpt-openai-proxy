@@ -1,113 +1,97 @@
-"""Carregamento, refresh e persistência das credenciais ChatGPT.
+"""Refresh e persistência das credenciais OAuth **por usuário**.
 
-Precedência: variáveis de ambiente (headless, read-only) > banco de dados
-(linha `chatgpt_credentials` na tabela Setting, gravada pelo fluxo /login).
+Cada `User` carrega os tokens da própria conta ChatGPT. O refresh pró-ativo
+acontece quando o token expira em menos de 5 minutos, serializado por usuário
+(asyncio.Lock por conta). O refresh token da OpenAI pode rotacionar; a
+substituição persiste na linha do usuário.
 
-O refresh pró-ativo acontece quando o token expira em menos de 5 minutos. Um
-lock de processo serializa o refresh; em deploys multi-instância (FastAPI
-Cloud) a janela de corrida entre instâncias é aceitável porque o refresh só
-ocorre uma vez a cada ~55 minutos e o refresh token da OpenAI tolera reúso
-recente. Credenciais vindas de env nunca são persistidas.
+Em deploys multi-instância (FastAPI Cloud) a janela de corrida entre
+instâncias é aceitável: o refresh só ocorre uma vez a cada ~55 minutos por
+usuário e o backend tolera reúso recente do refresh token.
 """
 
 import asyncio
-import json
 import time
-from typing import Literal
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from .config import Settings
-from .models import Setting
+from .models import User, utcnow
 from .oauth import Credentials, refresh_access_token
 
-CREDENTIALS_SETTING_KEY = "chatgpt_credentials"
 REFRESH_BUFFER_MS = 5 * 60 * 1000
 
-_refresh_lock = asyncio.Lock()
+_locks: dict[int, asyncio.Lock] = {}
+_locks_guard = asyncio.Lock()
 
 
-def _env_credentials(settings: Settings) -> Credentials | None:
-    """Credenciais vindas de env vars; só valem se todas existirem."""
-    access = settings.chatgpt_access_token
-    refresh = settings.chatgpt_refresh_token
-    account_id = settings.chatgpt_account_id
-    expires_raw = settings.chatgpt_expires_at
-    if not access or not refresh or not account_id or not expires_raw:
-        return None
-    try:
-        expires_at = int(expires_raw)
-    except ValueError:
+async def _lock_for(user_id: int) -> asyncio.Lock:
+    async with _locks_guard:
+        lock = _locks.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _locks[user_id] = lock
+        return lock
+
+
+def credentials_from_user(user: User) -> Credentials | None:
+    """Monta Credentials a partir da linha do usuário (None se não autenticado)."""
+    if not user.access_token:
         return None
     return Credentials(
-        access_token=access,
-        refresh_token=refresh,
-        account_id=account_id,
-        expires_at=expires_at,
+        access_token=user.access_token,
+        refresh_token=user.refresh_token,
+        account_id=user.account_id or "",
+        expires_at=user.expires_at,
     )
 
 
-def load_credentials(
-    session: Session, settings: Settings
-) -> tuple[Credentials, Literal["env", "db"]] | None:
-    """Carrega as credenciais ativas (env tem precedência sobre o banco)."""
-    from_env = _env_credentials(settings)
-    if from_env:
-        return from_env, "env"
-
-    row = session.get(Setting, CREDENTIALS_SETTING_KEY)
-    if row and row.value:
-        try:
-            return Credentials.from_json(row.value), "db"
-        except (json.JSONDecodeError, KeyError, ValueError):
-            return None
-    return None
-
-
-def save_credentials(session: Session, credentials: Credentials) -> None:
-    """Persiste as credenciais no banco (upset na tabela Setting)."""
-    row = session.get(Setting, CREDENTIALS_SETTING_KEY)
-    if row is None:
-        row = Setting(key=CREDENTIALS_SETTING_KEY, value=credentials.to_json())
-    else:
-        row.value = credentials.to_json()
-    session.add(row)
+def persist_credentials(session: Session, user: User, credentials: Credentials) -> None:
+    """Grava os tokens na linha do usuário."""
+    user.access_token = credentials.access_token
+    user.refresh_token = credentials.refresh_token
+    user.expires_at = credentials.expires_at
+    if credentials.account_id and not user.account_id:
+        user.account_id = credentials.account_id
+    session.add(user)
     session.commit()
 
 
-def delete_credentials(session: Session) -> None:
-    """Remove as credenciais do banco."""
-    row = session.get(Setting, CREDENTIALS_SETTING_KEY)
-    if row:
-        session.delete(row)
-        session.commit()
+def save_oauth_credentials(
+    session: Session, user: User, credentials: Credentials
+) -> None:
+    """Persiste o resultado de um login OAuth para o usuário."""
+    persist_credentials(session, user, credentials)
+    user.last_login_at = utcnow()
+    session.add(user)
+    session.commit()
 
 
-async def get_valid_credentials(session: Session, settings: Settings) -> Credentials | None:
-    """Garante credenciais frescas, renovando quando perto da expiração."""
-    loaded = load_credentials(session, settings)
-    if loaded is None:
+async def get_valid_user_credentials(
+    session: Session, user: User, settings: Settings
+) -> Credentials | None:
+    """Garante credenciais frescas do usuário, renovando quando necessário."""
+    credentials = credentials_from_user(user)
+    if credentials is None:
         return None
-    credentials, source = loaded
 
-    if credentials.expires_at > int(time.time() * 1000) + REFRESH_BUFFER_MS:
-        return credentials
-    if not credentials.refresh_token:
+    now = int(time.time() * 1000)
+    if credentials.expires_at > now + REFRESH_BUFFER_MS or not credentials.refresh_token:
         return credentials
 
-    async with _refresh_lock:
+    async with await _lock_for(user.id or 0):
         # Re-leitura dentro do lock: outra requisição pode já ter renovado.
-        loaded = load_credentials(session, settings)
-        if loaded is None:
+        session.refresh(user)
+        credentials = credentials_from_user(user)
+        if credentials is None:
             return None
-        credentials, source = loaded
         if credentials.expires_at > int(time.time() * 1000) + REFRESH_BUFFER_MS:
             return credentials
 
         try:
             token = await refresh_access_token(settings, credentials.refresh_token)
         except Exception:
-            return credentials
+            return credentials  # mantém o token antigo; próxima tentativa renova
 
         refreshed = Credentials(
             access_token=token["access_token"],
@@ -115,6 +99,5 @@ async def get_valid_credentials(session: Session, settings: Settings) -> Credent
             account_id=credentials.account_id,
             expires_at=int(time.time() * 1000) + int(token.get("expires_in", 0)) * 1000,
         )
-        if source == "db":
-            save_credentials(session, refreshed)
+        persist_credentials(session, user, refreshed)
         return refreshed

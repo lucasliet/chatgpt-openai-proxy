@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from .codex import build_engine
-from .config import Settings, get_settings
+from .config import Settings, get_settings, resolved_database_url
 from .database import init_db
 from .routers import admin, anthropic, chat, login, models, responses
 from .security import generate_api_key
@@ -47,11 +47,8 @@ def _bootstrap_admin_key(settings: Settings) -> None:
 async def lifespan(app: FastAPI):
     init_db()
     _bootstrap_admin_key(app.state.settings)
-    logger.info(
-        "Proxy pronto (engine=%s, db=%s)",
-        app.state.engine.name,
-        app.state.settings.database_url.split("@")[-1],  # oculta credenciais
-    )
+    db_target = resolved_database_url(app.state.settings).split("@")[-1]  # oculta credenciais
+    logger.info("Proxy pronto (engine=%s, db=%s)", app.state.engine.name, db_target)
     yield
 
 

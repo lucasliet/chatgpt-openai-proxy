@@ -10,13 +10,25 @@ EXISTS`), segura para deploys zero-downtime com múltiplas instâncias.
 import os
 from collections.abc import Generator
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import SQLModel, Session, create_engine
 
-from .config import get_settings
+from .config import get_settings, resolved_database_url
 
 _engine: Engine | None = None
+
+# Colunas adicionadas ao longo da vida do projeto para a tabela proxy_user.
+# `create_all` não altera tabelas existentes, então aplicamos ALTER TABLE
+# idempotente no boot (seguro com múltiplas instâncias: ADD COLUMN IF NOT
+# EXISTS é verificado por inspeção antes).
+_USER_COLUMN_MIGRATIONS: dict[str, str] = {
+    "account_id": "ALTER TABLE proxy_user ADD COLUMN account_id VARCHAR",
+    "access_token": "ALTER TABLE proxy_user ADD COLUMN access_token VARCHAR NOT NULL DEFAULT ''",
+    "refresh_token": "ALTER TABLE proxy_user ADD COLUMN refresh_token VARCHAR NOT NULL DEFAULT ''",
+    "expires_at": "ALTER TABLE proxy_user ADD COLUMN expires_at BIGINT NOT NULL DEFAULT 0",
+    "last_login_at": "ALTER TABLE proxy_user ADD COLUMN last_login_at TIMESTAMP",
+}
 
 
 def _normalize_url(url: str) -> str:
@@ -34,7 +46,7 @@ def _normalize_url(url: str) -> str:
 
 
 def _make_engine() -> Engine:
-    url = _normalize_url(get_settings().database_url)
+    url = _normalize_url(resolved_database_url(get_settings()))
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         # check_same_thread=False é seguro: o Session é por-request e o
@@ -54,19 +66,51 @@ def get_engine() -> Engine:
     """Retorna (criando se necessário) o engine global."""
     global _engine
     if _engine is None:
-        url = get_settings().database_url
+        url = resolved_database_url(get_settings())
         if url.startswith("sqlite"):
-            # Garante que o diretório do arquivo existe (ex.: ./data/proxy.db).
-            path = url.replace("sqlite:///", "", 1)
-            if path and path != ":memory:":
-                os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            # Garante que o diretório do arquivo existe e tem permissão
+            # restritiva (mesmo cuidado do credentials.json 0600 original).
+            from .config import proxy_home
+
+            home = proxy_home(get_settings())
+            home.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                os.chmod(home, 0o700)
+            except OSError:
+                pass
+            db_path = home / "proxy.db"
+            try:
+                if db_path.exists():
+                    os.chmod(db_path, 0o600)
+            except OSError:
+                pass
         _engine = _make_engine()
     return _engine
 
 
+def _run_column_migrations(engine: Engine) -> None:
+    """Adiciona colunas novas em tabelas existentes (idempotente)."""
+    inspector = inspect(engine)
+    if "proxy_user" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("proxy_user")}
+    pending = [
+        statement
+        for column, statement in _USER_COLUMN_MIGRATIONS.items()
+        if column not in existing
+    ]
+    if not pending:
+        return
+    with engine.begin() as connection:
+        for statement in pending:
+            connection.execute(text(statement))
+
+
 def init_db() -> None:
     """Cria as tabelas se não existirem (idempotente, seguro no boot)."""
-    SQLModel.metadata.create_all(get_engine())
+    engine = get_engine()
+    SQLModel.metadata.create_all(engine)
+    _run_column_migrations(engine)
 
 
 def get_session() -> Generator[Session, None, None]:

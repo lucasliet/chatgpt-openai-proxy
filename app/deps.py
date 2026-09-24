@@ -8,11 +8,10 @@ chaves revogadas ou inexistentes recebem 401 no formato de erro da OpenAI.
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, status
 from sqlmodel import Session, select
 
-from .config import Settings, get_settings
-from .credentials import get_valid_credentials
+from .config import get_settings
 from .database import get_session
 from .models import ApiKey, User, utcnow
 from .oauth import Credentials
@@ -73,16 +72,22 @@ def require_api_key(
     return AuthContext(user=user, api_key=api_key)
 
 
-async def require_credentials(
-    request: Request,
+async def require_user_credentials(
+    auth: Annotated[AuthContext, Depends(require_api_key)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Credentials:
-    """Garante credenciais ChatGPT válidas (refresh pró-ativo) ou 401."""
-    settings: Settings = get_settings()
-    credentials = await get_valid_credentials(session, settings)
+    """Garante credenciais ChatGPT válidas **do usuário da API key**.
+
+    O OAuth é por usuário: quem chama o proxy usa a própria assinatura
+    ChatGPT. Token é renovado proativamente (buffer de 5 min) e persistido.
+    """
+    from .credentials import get_valid_user_credentials
+
+    settings = get_settings()
+    credentials = await get_valid_user_credentials(session, auth.user, settings)
     if credentials is None:
         raise _unauthorized(
-            "Nenhuma credencial ChatGPT configurada. Acesse /login ou defina as env vars CHATGPT_*.",
+            "Sua conta não tem credencial ChatGPT válida. Acesse /login para autenticar.",
             "no_credentials",
         )
     return credentials

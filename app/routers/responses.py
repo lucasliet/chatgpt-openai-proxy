@@ -14,7 +14,7 @@ from sqlmodel import Session
 from ..converters.streams import format_sse
 from ..codex import Engine, UpstreamError
 from ..database import get_session
-from ..deps import AuthContext, require_api_key, require_credentials
+from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
 from .common import upstream_error_response
 
@@ -26,10 +26,10 @@ async def create_response(
     request: Request,
     auth: Annotated[AuthContext, Depends(require_api_key)],
     session: Annotated[Session, Depends(get_session)],
+    credentials: Annotated[Credentials, Depends(require_user_credentials)],
 ):
     engine: Engine = request.app.state.engine
     payload: dict[str, Any] = await request.json()
-    credentials: Credentials = await require_credentials(request, session)
 
     if payload.get("stream"):
         return StreamingResponse(

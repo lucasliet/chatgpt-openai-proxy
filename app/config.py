@@ -3,9 +3,17 @@
 Compatível com deploy no FastAPI Cloud: nenhum valor sensível fica em
 arquivo versionado; tudo pode ser injetado via dashboard/CLI (`fastapi cloud
 env set`, com `--secret` para segredos).
+
+Armazenamento: com `DATABASE_URL` definido (Postgres gerenciado, ex.: Neon)
+o estado fica lá. Sem `DATABASE_URL`, tudo é persistido num arquivo SQLite em
+`CHATGPT_PROXY_HOME` (default `~/.config/chatgpt-proxy`) — mesmo modelo do
+projeto anterior (`credentials.json`), funciona igual em run local e Docker
+(basta montar o diretório como volume).
 """
 
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,9 +26,13 @@ class Settings(BaseSettings):
     port: int = 3000
     host: str = "0.0.0.0"
 
-    # Em produção no FastAPI Cloud use Postgres gerenciado (ex.: Neon) via
-    # DATABASE_URL. SQLite é o default apenas para desenvolvimento local.
-    database_url: str = "sqlite:///./data/proxy.db"
+    # Postgres gerenciado em produção (FastAPI Cloud/Neon). Quando None, o
+    # banco é um arquivo SQLite em CHATGPT_PROXY_HOME (local/Docker).
+    database_url: str | None = None
+
+    # Diretório base do armazenamento local (mesmo papel do CHATGPT_PROXY_HOME
+    # do projeto anterior).
+    chatgpt_proxy_home: str | None = None
 
     # Segredo que assina o cookie de sessão do fluxo /login.
     cookie_secret: str = "chatgpt-proxy-dev-secret"
@@ -47,19 +59,26 @@ class Settings(BaseSettings):
     # valor do redirect_uri na URL de autorização e o modo "colar callback".
     oauth_callback_port: int = 1455
 
-    # Credenciais ChatGPT via env (headless/Docker). Têm precedência sobre as
-    # credenciais salvas no banco e são read-only (refresh não persiste).
-    # Só valem quando todas existem e CHATGPT_EXPIRES_AT é numérico (ms epoch).
-    chatgpt_access_token: str | None = None
-    chatgpt_refresh_token: str | None = None
-    chatgpt_account_id: str | None = None
-    chatgpt_expires_at: str | None = None
-
 
 @lru_cache
 def get_settings() -> Settings:
     """Retorna a instância cacheada das configurações."""
     return Settings()
+
+
+def proxy_home(settings: Settings) -> Path:
+    """Diretório base do armazenamento local."""
+    raw = settings.chatgpt_proxy_home or os.environ.get("CHATGPT_PROXY_HOME")
+    if raw:
+        return Path(raw)
+    return Path.home() / ".config" / "chatgpt-proxy"
+
+
+def resolved_database_url(settings: Settings) -> str:
+    """DATABASE_URL efetivo: a env ou SQLite no proxy home."""
+    if settings.database_url:
+        return settings.database_url
+    return f"sqlite:///{proxy_home(settings) / 'proxy.db'}"
 
 
 def oauth_redirect_uri(settings: Settings) -> str:

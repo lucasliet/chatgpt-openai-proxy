@@ -14,7 +14,7 @@ from ..converters.streams import (
     responses_events_to_chat_chunks,
 )
 from ..database import get_session
-from ..deps import AuthContext, require_api_key, require_credentials
+from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
 from .common import upstream_error_response
 
@@ -26,12 +26,12 @@ async def create_chat_completion(
     request: Request,
     auth: Annotated[AuthContext, Depends(require_api_key)],
     session: Annotated[Session, Depends(get_session)],
+    credentials: Annotated[Credentials, Depends(require_user_credentials)],
 ):
     engine: Engine = request.app.state.engine
     body: dict[str, Any] = await request.json()
     payload = chat_to_responses(body)
     model = body.get("model", "")
-    credentials: Credentials = await require_credentials(request, session)
 
     if body.get("stream"):
         return StreamingResponse(
