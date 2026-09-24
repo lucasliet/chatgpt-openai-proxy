@@ -24,6 +24,9 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-q"
+# Garante que a raiz do projeto esteja no sys.path (ex.: `uv run pytest` no
+# CI não adiciona o cwd como `python -m pytest` faz).
+pythonpath = ["."]
 
 [tool.fastapi]
 entrypoint = "app.main:app"
