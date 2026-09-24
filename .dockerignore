@@ -1,15 +1,20 @@
-node_modules
-dist
+# Deploy do FastAPI Cloud não usa Docker; este arquivo serve para GHCR/Compose.
+
 .git
-.gitignore
-.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+data
+*.db
 .env
 .env.local
 *.log
-data
-bun.lockb
+.github
 README.md
 Dockerfile
 docker-compose.yml
 .dockerignore
-tests
+.fastapicloudignore
+.python-version

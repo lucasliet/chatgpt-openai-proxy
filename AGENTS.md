@@ -2,60 +2,54 @@
 
 ## Comandos canônicos
 
-- Runtime é Bun; não trocar para `npm`, `yarn`, `jest` ou `vitest` sem uma migração explícita.
-- Instalar dependências: `bun install`.
-- Servidor local: `bun start` (`bun run src/index.ts`). Dev/watch: `bun run dev`.
-- Login/status/logout: `bun run login`, `bun run status`, `bun run logout`.
-- Verificação completa local/CI: `bun run typecheck` e depois `bun test`.
-- CI usa `bun install --frozen-lockfile` -> `bun run typecheck` -> `bun test` em `.github/workflows/ci.yml`.
-- Teste focado: `bun test tests/path/to/file.test.ts`.
-- Não há script/config de lint ou formatter no repo; não inventar comandos inexistentes.
+- Gerenciador de pacotes é **uv**; não usar `pip` direto nem trocar para outro runtime sem migração explícita.
+- Instalar dependências: `uv sync` (inclui grupo dev; lock em `uv.lock` — manter atualizado com `uv lock`).
+- Servidor local: `uv run fastapi dev` (reload). Produção: `uv run uvicorn app.main:app --host 0.0.0.0 --port 3000`.
+- Verificação completa local/CI: `uv run pytest`.
+- CI usa `uv sync --frozen` -> `uv run pytest` em `.github/workflows/ci.yml`.
+- Teste focado: `uv run pytest tests/test_api.py::TestAdmin`.
 
-## Entry points e roteamento
+## FastAPI Cloud
 
-- `src/index.ts` é o entrypoint CLI e servidor; sem argumento ele roda `serve`.
-- `src/server/app.ts` monta o Hono app. Rotas públicas: `GET /health`, `/login/*`, `GET /v1/models`.
-- `ensureToken()` protege só `/v1/responses*` e `/v1/chat/completions*`; monte novas rotas públicas antes dele.
-- O stack HTTP é Hono em Bun (`Bun.serve`). Não introduza Express/Node HTTP sem intenção explícita.
+- Deploy alvo: https://fastapicloud.com/docs/ — o entrypoint está em `[tool.fastapi] entrypoint = "app.main:app"` no `pyproject.toml` (auto-detecção também acha `app/main.py`).
+- `fastapi[standard]` deve permanecer em dependencies (CLI de deploy da plataforma).
+- Python pinado em `.python-version` (3.12) e `requires-python` no pyproject.
+- Config 100% por env vars (pydantic-settings); nada de segredos em arquivo versionado.
+- `.fastapicloudignore` exclui `tests/`, `data/` etc. do upload; `.dockerignore` é só para o build Docker/GHCR.
+- A plataforma faz autoscaling multi-instância com deploys zero-downtime: nada de estado em disco/memória compartilhado. Banco default local é SQLite; em produção `DATABASE_URL` aponta para Postgres (Neon/Supabase). `init_db()` usa `create_all` (idempotente) — não quebrar isso.
+- Se `ADMIN_API_KEY` não estiver definida, uma chave é gerada por instância no boot (impressa nos logs). Em produção multi-instância a env é obrigatória para que todas as instâncias compartilhem a mesma chave.
 
-## OAuth, login e credenciais
+## Entry point e roteamento
 
-- O redirect OAuth real é `http://localhost:1455/auth/callback`; a porta 1455 é whitelisted pelo fluxo Codex. O env permite mudar `OAUTH_CALLBACK_PORT`, mas isso provavelmente quebra o OAuth real.
-- Docker/Compose usam login web em `/login`: exponha só a porta 3000, abra a URL de autorização, aceite o `connection refused` no callback `localhost:1455`, copie a URL completa e cole em `/login`.
-- O cookie `pkce` do login web é signed/httpOnly com `path: "/login"`; ao limpar, use o mesmo path e mantenha a validação de `state`.
-- A URL OAuth é construída em dois fluxos: web (`src/auth/oauth-client.ts`) e CLI (`src/auth/login-server.ts`). Mantenha `client_id`, scope, redirect URI, `codex_cli_simplified_flow=true` e `originator=codex_cli_rs` sincronizados.
-- Env vars de credenciais têm precedência sobre arquivo, mas só valem quando todas existem e `CHATGPT_EXPIRES_AT` é numérico: `CHATGPT_ACCESS_TOKEN`, `CHATGPT_REFRESH_TOKEN`, `CHATGPT_ACCOUNT_ID`, `CHATGPT_EXPIRES_AT`.
-- Credenciais vindas de env são read-only: refresh não é persistido. Credenciais de arquivo ficam em `${CHATGPT_PROXY_HOME}/credentials.json` com diretório `0700` e arquivo `0600`.
-- Nunca logue `accessToken`, `refreshToken`, `access_token` ou `refresh_token`.
+- `app/main.py` cria o app (`create_app()`) e expõe `app = create_app()` no módulo (importado pelo uvicorn/FastAPI Cloud). Não mover o objeto `app` de módulo.
+- Rotas públicas: `GET /health`, `/login`, `/v1/models` e as rotas de proxy são protegidas por API key via dependency (`app/deps.py::require_api_key`), não por middleware.
+- Erros HTTP com `detail={"error": {...}}` são promovidos ao topo do body pelo exception handler em `main.py` (formato OpenAI/Anthropic); manter esse contrato.
 
-## Config e TypeScript
+## Multi-usuário e API keys
 
-- `config.oauthCallbackPort`, `config.codexBaseUrl`, `config.proxyHome` e `config.cookieSecret` são getters para permitir testes/env após import; não converta para valores eager. `config.port` é eager hoje.
-- `tsconfig.json` é strict e inclui `noUncheckedIndexedAccess`, `noUnusedLocals` e `noUnusedParameters`; use guards ou `!` em acessos indexados quando necessário.
-- Funções exportadas no código usam TSDoc; mantenha esse padrão e evite comentários inline explicativos no corpo da implementação.
+- Chaves no formato `sk-<urlsafe>`; só o hash SHA-256 com salt (`app/security.py::_KEY_SALT`) é persistido. A chave completa é exibida uma única vez na criação.
+- Toda rota de proxy exige `Authorization: Bearer sk-...`; keys revogadas (`revoked_at`) são rejeitadas com 401.
+- Administração via `/admin/*` com header `X-Admin-Key`.
 
-## Conversores e compatibilidade OpenAI
+## OAuth, credenciais e engines
 
-- `convertChatToResponses` sempre deve enviar `store: false`.
-- Preserve o fallback `"You are a helpful assistant."` quando não houver `system`/`developer`; o backend Codex rejeita `instructions` vazias.
-- Mensagens `system` e `developer` viram `instructions` concatenadas com `\n\n`; `tool` vira `function_call_output`.
+- Redirect OAuth real é `http://localhost:1455/auth/callback`; a porta é configurável via `OAUTH_CALLBACK_PORT` mas mudá-la provavelmente quebra o fluxo (whitelisting Codex).
+- Env vars de credenciais (`CHATGPT_ACCESS_TOKEN`, `CHATGPT_REFRESH_TOKEN`, `CHATGPT_ACCOUNT_ID`, `CHATGPT_EXPIRES_AT`) têm precedência sobre o banco e só valem quando todas existem e `CHATGPT_EXPIRES_AT` é numérico (ms epoch). Env é read-only: refresh nunca persiste.
+- Refresh pró-ativo com buffer de 5 min (`REFRESH_BUFFER_MS`), serializado por `asyncio.Lock` em `app/credentials.py`.
+- Engine upstream em `app/codex.py`: `LiteLLMEngine` (default, `litellm.aresponses`, provider `openai/` + `api_base` do Codex + header `ChatGPT-Account-Id`) e `HttpxEngine` (`UPSTREAM_ENGINE=httpx`). As duas implementam a mesma interface (`responses` / `responses_stream`); ao alterar comportamento upstream, manter as duas consistentes.
+
+## Conversores e compatibilidade de API
+
+- `chat_to_responses` sempre envia `store: false`.
+- Preserve o fallback `"You are a helpful assistant."` quando não houver system/developer; o backend Codex rejeita `instructions` vazio.
+- Mensagens system/developer viram `instructions` concatenadas com `\n\n`; mensagens `tool` viram `function_call_output`.
 - `tools[].function` é achatado para `tools[].{name, description, parameters}`.
 - `max_tokens` vira `max_output_tokens`; `max_completion_tokens` sobrescreve `max_tokens`.
-- O stream converter deve emitir frames `data: {json}\n\n` e terminar com `data: [DONE]\n\n`.
-- `/v1/models` expõe uma allowlist local, mas `isAllowedModel()` não bloqueia requests nas rotas de chat/responses.
-- A API key enviada por clientes OpenAI-compatible é ignorada; autenticação upstream é só OAuth ChatGPT.
+- Streams de chat terminam com `data: [DONE]\n\n`; streams da Anthropic usam linha `event:` + `data:` (`message_start`/`content_block_*`/`message_delta`/`message_stop`).
+- Endpoints `/v1/responses` (passthrough), `/v1/chat/completions` e `/v1/messages`. Clientes Anthropic enviam `claude-*`; modelo fora da allowlist cai no `DEFAULT_MODEL` e o modelo solicitado é ecoado na resposta.
 
 ## Testes
 
-- Testes usam `bun:test`; descrições atuais estão em português.
-- Testes de auth mutam `process.env` e/ou `globalThis.fetch`; restaure valores em novos testes.
-- Prefira injeção de dependências já existente (`deps` em rotas/middleware/clientes) a chamadas reais para ChatGPT/OpenAI.
-- Testes do login CLI sobem servidor local em porta randômica via `OAUTH_CALLBACK_PORT`; evite hardcode de 1455 em testes unitários.
-
-## Docker e deploy
-
-- `docker-compose.yml` usa `ghcr.io/lucasliet/chatgpt-openai-proxy:latest` com `pull_policy: always`, publica só `3000:3000` e monta `./data:/root/.config/chatgpt-proxy`.
-- O container deve logar a rota `http://localhost:3000/login` no startup; mantenha essa orientação visível para usuários de Compose.
-- `docker compose up -d` usa a imagem publicada; só use build local quando estiver validando o Dockerfile.
-- Workflow de publish gera tags GHCR por run number, `latest` em `main`, semver em tags `v*.*.*` e `sha-<short>`.
-- Atenção antes de mexer no build Docker: o repo tem `bun.lock`, enquanto o Dockerfile atual copia `bun.lockb*`; valide `docker build` se alterar publicação/imagem.
+- Testes usam `pytest` + `pytest-asyncio` (modo auto) + `respx` para mockar o upstream Codex (`tests/conftest.py` força `UPSTREAM_ENGINE=httpx` para determinismo).
+- Fixtures constroem um app fresco por teste com SQLite em tmp path e env isolada (cuidado com o `lru_cache` de `get_settings` — usar `cache_clear()` + `database.reset_engine()`).
+- Ao adicionar env vars novas em `Settings`, refletir em `.env.example`, README e `tests/conftest.py::_setup_env` quando aplicável.

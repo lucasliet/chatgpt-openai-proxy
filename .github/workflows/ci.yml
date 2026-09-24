@@ -9,22 +9,19 @@ on:
 
 jobs:
   test:
-    name: Typecheck & Test
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
-          bun-version: latest
+          enable-cache: true
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        run: bun run typecheck
+        run: uv sync --frozen
 
       - name: Test
-        run: bun test
+        run: uv run pytest

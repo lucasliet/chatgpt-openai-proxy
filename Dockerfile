@@ -1,23 +1,27 @@
 # syntax=docker/dockerfile:1
 
-FROM oven/bun:1 AS deps
+FROM python:3.12-slim AS runtime
 WORKDIR /app
 
-COPY package.json bun.lockb* ./
-RUN bun install --frozen-lockfile
+# uv gerencia as dependências (mesma lock do desenvolvimento).
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-FROM oven/bun:1-slim AS runtime
-WORKDIR /app
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-dev --no-install-project
 
-ENV NODE_ENV=production
+COPY app ./app
+
+# SQLite em volume; em produção prefira Postgres via DATABASE_URL.
+ENV DATABASE_URL="sqlite:////data/proxy.db"
 ENV PORT=3000
-ENV OAUTH_CALLBACK_PORT=1455
+ENV PATH="/app/.venv/bin:$PATH"
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.json ./
-COPY src ./src
+RUN useradd --create-home appuser \
+    && mkdir -p /data \
+    && chown -R appuser:appuser /data
+USER appuser
 
-EXPOSE 3000 1455
-VOLUME ["/root/.config/chatgpt-proxy"]
+VOLUME ["/data"]
+EXPOSE 3000
 
-CMD ["bun", "run", "src/index.ts"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000"]

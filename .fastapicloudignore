@@ -1,0 +1,8 @@
+# Arquivos/diretórios que não devem ser enviados no deploy do FastAPI Cloud.
+# Respeita o .gitignore; use este arquivo para excluir coisas versionadas.
+tests/
+data/
+*.db
+.github/
+Dockerfile
+docker-compose.yml

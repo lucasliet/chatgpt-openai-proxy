@@ -2,11 +2,12 @@ services:
   chatgpt-proxy:
     image: ghcr.io/lucasliet/chatgpt-openai-proxy:latest
     pull_policy: always
-    container_name: chatgpt-openai-proxy
+    container_name: chatgpt-proxy
     ports:
       - "3000:3000"
     environment:
       PORT: "3000"
+      DATABASE_URL: "sqlite:////data/proxy.db"
     volumes:
-      - ./data:/root/.config/chatgpt-proxy
+      - ./data:/data
     restart: unless-stopped

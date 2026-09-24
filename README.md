@@ -1,224 +1,163 @@
 # chatgpt-openai-proxy
 
-Proxy OpenAI-compatible que roteia chamadas para o endpoint privado do **ChatGPT Plan (Codex)** em `https://chatgpt.com/backend-api/codex/responses`, autenticando via **OAuth PKCE** com a conta ChatGPT (em vez de API key).
+Proxy **OpenAI + Anthropic** compatível que roteia requests para o **ChatGPT Plan (Codex)** via OAuth, reescrito em **FastAPI** com suporte a **multi-usuário** e **API keys por usuário**, pronto para deploy no **[FastAPI Cloud](https://fastapicloud.com)**.
 
-Permite que qualquer cliente OpenAI-existente (biblioteca `openai`, Cursor, Continue, etc.) use os modelos do ChatGPT Plan (`gpt-5.1-codex`, `gpt-5.2-codex`, etc.) apontando para o proxy.
+## Features
 
-## Endpoints expostos
+- **Três formatos de entrada** sobre a mesma assinatura do ChatGPT:
+  - `POST /v1/responses` — Responses API (passthrough)
+  - `POST /v1/chat/completions` — Chat Completions API (conversão bidirecional)
+  - `POST /v1/messages` — Anthropic Messages API (conversão bidirecional, streaming com eventos oficiais)
+- **Multi-usuário**: usuários com API keys próprias (`sk-...`), revogação e `last_used_at` — tudo administrado via `/admin/*`
+- **Engine upstream intercambiável**: [LiteLLM](https://docs.litellm.ai/docs/response_api) (`litellm.aresponses`, default) ou HTTPX direto (`UPSTREAM_ENGINE=httpx`)
+- **OAuth PKCE** com fluxo web em `/login` (modo "colar URL de callback" para headless/Docker) ou credenciais via env vars
+- **Refresh automático** do access token (5 min de antecedência)
+- **Streaming SSE** completo nos três formatos
+- **Banco agnóstico**: SQLite local, Postgres (Neon/Supabase) em produção
 
-| Rota                        | Descrição                                                         |
-| --------------------------- | ----------------------------------------------------------------- |
-| `GET /login`                | Tela de login web (UI HTML) para autenticar via browser.          |
-| `POST /login/start`         | Inicia o fluxo OAuth PKCE, retorna a URL de autorização.          |
-| `POST /login/complete`      | Finaliza o login recebendo a URL de callback colada pelo usuário.  |
-| `POST /v1/chat/completions` | Converte Chat Completions → Responses API e devolve em formato OpenAI. |
-| `POST /v1/responses`        | Passthrough direto para o Codex (sem conversão).                  |
-| `GET /v1/models`            | Lista de modelos permitidos no ChatGPT Plan.                      |
-| `GET /health`               | Healthcheck.                                                      |
+## Quick start local
 
-## Pré-requisitos
-
-- [Bun](https://bun.sh) >= 1.1
-- Assinatura ChatGPT com acesso ao Codex (Plus/Pro/Team/Enterprise)
-
-## Uso local
+Pré-requisitos: [uv](https://docs.astral.sh/uv/) e Python 3.12.
 
 ```bash
-bun install
-
-# 1. Subir o proxy
-bun start
-
-# 2. Autenticar via browser: abra http://localhost:3000/login
-#    (ou use o CLI: bun run login)
-
-# 3. Verificar estado das credenciais
-bun run status
+uv sync
+uv run fastapi dev
 ```
 
-Aponte seu cliente OpenAI para `http://localhost:3000`:
+Acesse `http://localhost:3000/login`, autorize com sua conta ChatGPT e cole a URL de callback. Pronto — o proxy já pode atender requests.
+
+## Deploy no FastAPI Cloud
+
+O projeto já segue as convenções da plataforma (entrypoint em `[tool.fastapi]` do `pyproject.toml`, `fastapi[standard]`, `.python-version`):
 
 ```bash
-curl http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-5.1-codex",
-    "messages": [{"role": "user", "content": "Olá!"}]
-  }'
+uvx fastapi login          # ou: fastapi login
+fastapi cloud env set --secret ADMIN_API_KEY "sk-admin-segura"
+fastapi cloud env set --secret COOKIE_SECRET "segredo-aleatorio"
+fastapi cloud env set DATABASE_URL "postgresql://...neon..."   # Postgres gerenciado
+fastapi deploy
 ```
 
-Com a biblioteca `openai` (Python):
+Depois do deploy, autentique a assinatura abrindo `https://<seu-app>.fastapicloud.dev/login` (modo "colar URL de callback" — o redirect localhost não precisa ser alcançável).
+
+> **Por que Postgres?** O FastAPI Cloud faz autoscaling com múltiplas instâncias e deploys zero-downtime; SQLite em disco não é compartilhado entre instâncias. Use a integração [Neon](https://fastapicloud.com/docs/integrations/neon-integration/) ou [Supabase](https://fastapicloud.com/docs/integrations/supabase-integration/). A criação de tabelas é idempotente (`CREATE TABLE IF NOT EXISTS`) e roda no boot de cada instância.
+
+## Uso
+
+### 1. Criar usuário e API key (admin)
+
+```bash
+curl -X POST localhost:3000/admin/users \
+  -H "X-Admin-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"name": "alice"}'
+
+curl -X POST localhost:3000/admin/users/1/keys \
+  -H "X-Admin-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"label": "notebook"}'
+# → {"key": "sk-...", ...}  # exibida apenas desta vez
+```
+
+Endpoints admin: `GET /admin/users` · `DELETE /admin/users/{id}` · `GET /admin/users/{id}/keys` · `POST /admin/users/{id}/keys` · `POST /admin/keys/{id}/revoke` · `GET /admin/credentials` · `DELETE /admin/credentials`.
+
+Se `ADMIN_API_KEY` não for definida, uma chave é gerada no boot e impressa nos logs (defina a env em produção multi-instância).
+
+### 2. Chamar a API
+
+```bash
+export KEY="sk-..."
+
+# Chat Completions
+curl localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model": "gpt-5.1-codex", "messages": [{"role": "user", "content": "oi"}]}'
+
+# Responses API
+curl localhost:3000/v1/responses \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model": "gpt-5.1-codex", "input": "oi", "store": false}'
+
+# Anthropic Messages (clientes Claude funcionam apontando base_url aqui)
+curl localhost:3000/v1/messages \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model": "claude-sonnet-4-5", "max_tokens": 1024, "messages": [{"role": "user", "content": "oi"}]}'
+```
+
+Streaming (`"stream": true`) funciona nos três endpoints.
+
+Compatibilidade com clientes oficiais:
 
 ```python
 from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:3000/v1",
-    api_key="chatgpt-plan",  # qualquer string; o proxy ignora a API key
-)
-
-resp = client.chat.completions.create(
-    model="gpt-5.1-codex",
-    messages=[{"role": "user", "content": "Olá!"}],
-)
-print(resp.choices[0].message.content)
+client = OpenAI(base_url="http://localhost:3000/v1", api_key="sk-...")
+client.chat.completions.create(model="gpt-5.1-codex", messages=[...])
 ```
 
-## CLI
-
-```text
-chatgpt-openai-proxy
-
-Comandos:
-  serve    Inicia o servidor proxy (default)
-  login    Executa o fluxo OAuth no navegador
-  logout   Remove as credenciais salvas
-  status   Mostra o estado atual das credenciais
-  help     Exibe esta ajuda
+```python
+import anthropic
+client = anthropic.Anthropic(base_url="http://localhost:3000", api_key="sk-...")
+client.messages.create(model="claude-sonnet-4-5", max_tokens=1024, messages=[...])
+# modelos claude-* caem no DEFAULT_MODEL (gpt-5.1-codex) upstream
 ```
 
-## Variáveis de ambiente
+### 3. Credenciais ChatGPT
 
-| Variável                 | Default                                      | Descrição                                  |
-| ------------------------ | -------------------------------------------- | ------------------------------------------ |
-| `PORT`                   | `3000`                                       | Porta do servidor proxy.                   |
-| `OAUTH_CALLBACK_PORT`    | `1455`                                       | Porta do callback OAuth (whitelisted).     |
-| `CODEX_BASE_URL`         | `https://chatgpt.com/backend-api/codex`      | Endpoint do Codex.                         |
-| `CHATGPT_PROXY_HOME`     | `~/.config/chatgpt-proxy`                    | Diretório base das credenciais.            |
-| `COOKIE_SECRET`          | `chatgpt-proxy-dev-secret`                   | Segredo do cookie PKCE do login web.       |
-| `CHATGPT_ACCESS_TOKEN`   | —                                            | Token via env (Docker headless).           |
-| `CHATGPT_REFRESH_TOKEN`  | —                                            | Refresh token via env (Docker headless).   |
-| `CHATGPT_ACCOUNT_ID`     | —                                            | Account id via env (Docker headless).      |
-| `CHATGPT_EXPIRES_AT`     | —                                            | Expiração em ms via env (Docker headless). |
+Duas fontes, com precedência **env vars > banco**:
+
+| Fonte | Como | Observação |
+| --- | --- | --- |
+| Env vars | `CHATGPT_ACCESS_TOKEN`, `CHATGPT_REFRESH_TOKEN`, `CHATGPT_ACCOUNT_ID`, `CHATGPT_EXPIRES_AT` | Read-only (refresh não persiste). Ideal para Docker/CI. Só valem quando **todas** existem e `CHATGPT_EXPIRES_AT` é numérico (ms epoch) |
+| Banco | Fluxo web `/login` | Padrão para deploys; persiste refresh no Postgres/SQLite |
+
+## Configuração
+
+| Env var | Default | Descrição |
+| --- | --- | --- |
+| `PORT` | `3000` | Porta do servidor |
+| `DATABASE_URL` | `sqlite:///./data/proxy.db` | SQLAlchemy URL (SQLite local; Postgres em produção) |
+| `UPSTREAM_ENGINE` | `litellm` | `litellm` (default) ou `httpx` |
+| `DEFAULT_MODEL` | `gpt-5.1-codex` | Modelo quando o pedido está fora da allowlist |
+| `ADMIN_API_KEY` | — (gerada no boot) | Chave dos endpoints `/admin/*` |
+| `COOKIE_SECRET` | dev | Segredo do cookie de sessão do `/login` |
+| `CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Backend do plano ChatGPT |
 
 ## Docker
 
-O proxy roda em container e oferece **3 modos de autenticação**. O modo web (recomendado) funciona em qualquer ambiente — não precisa de porta 1455 nem de CLI dentro do container.
-
-### Modo 1: Login web (recomendado para qualquer ambiente)
-
-Basta expor a porta 3000. O login acontece no browser:
-
 ```bash
-docker run -d -p 3000:3000 -v ./data:/root/.config/chatgpt-proxy ghcr.io/lucasliet/chatgpt-openai-proxy:latest
+docker compose up -d    # usa a imagem publicada no GHCR
 ```
 
-Depois:
-
-1. Abra `http://localhost:3000/login` no navegador.
-2. Clique em **"Iniciar login com ChatGPT"** — o proxy gera a URL de autorização.
-3. Abra o link e autorize no ChatGPT. O browser tentará redirecionar para `localhost:1455/auth/callback?code=...&state=...` e pode mostrar erro de conexão — **isso é normal**.
-4. Copie a **URL completa** da barra de endereços do navegador.
-5. Cole a URL no campo da tela de login e clique em **"Concluir login"**.
-
-As credenciais são persistidas no volume `./data`, então o login é feito apenas uma vez.
-
-### Modo 2: Importar tokens via env (headless puro)
-
-Se não há browser no host, autentique numa máquina com browser (rodando o proxy localmente) e injete os tokens no container via env vars:
-
-```bash
-# Na máquina com browser:
-bun start  # ou docker run -p 3000:3000 ghcr.io/lucasliet/chatgpt-openai-proxy:latest
-# → faça login em /login e copie o conteúdo de data/credentials.json
-cat data/credentials.json
-```
-
-```bash
-# No host headless:
-docker run -d \
-  -p 3000:3000 \
-  -e CHATGPT_ACCESS_TOKEN='eyJ...' \
-  -e CHATGPT_REFRESH_TOKEN='v1.MjQ1Nj...' \
-  -e CHATGPT_ACCOUNT_ID='org-...' \
-  -e CHATGPT_EXPIRES_AT='1748544000000' \
-  ghcr.io/lucasliet/chatgpt-openai-proxy:latest
-```
-
-### Modo 3: `--network host` (Linux)
-
-Evita problemas de port-forward; o callback `localhost:1455` funciona naturalmente:
-
-```bash
-docker run --network host ghcr.io/lucasliet/chatgpt-openai-proxy:latest
-```
-
-### docker-compose
-
-```bash
-docker compose up -d
-docker compose logs -f chatgpt-proxy
-```
-
-O container usa `ghcr.io/lucasliet/chatgpt-openai-proxy:latest` e imprime nos logs a rota `http://localhost:3000/login` para autenticação. Veja `docker-compose.yml` para portas e volume padrão.
-
-## Modelo de autenticação
-
-O fluxo OAuth 2.0 PKCE é o mesmo usado pelo Codex CLI:
-
-1. Gera `code_verifier` + `code_challenge` (S256) + `state` aleatório.
-2. Monta `https://auth.openai.com/oauth/authorize?...` com:
-   - `client_id=app_EMoamEEZ73f0CkXaXp7hrann`
-   - `codex_cli_simplified_flow=true`
-   - `originator=codex_cli_rs`
-   - `redirect_uri=http://localhost:1455/auth/callback` (whitelisted)
-3. Usuário autoriza no ChatGPT → browser redireciona para `localhost:1455/auth/callback?code=...&state=...`.
-4. **Modo web:** o usuário cola essa URL na tela `/login` → o proxy valida `state` (CSRF), troca `code` por tokens. **Modo CLI:** o proxy captura automaticamente via servidor na porta 1455.
-5. Extrai `chatgpt_account_id` do `id_token` JWT.
-6. Persiste `access_token`, `refresh_token`, `expires_at`, `account_id`.
-
-**Refresh proativo**: antes de cada request, se o token expira em menos de 5 minutos, o middleware renova automaticamente e persiste o novo `refresh_token` se rotacionado.
-
-## Segurança
-
-- Arquivo de credenciais com permissão `0600`, diretório pai `0700`.
-- `state` validado em todo callback OAuth (CSRF).
-- PKCE sempre (nunca omitido).
-- Refresh tokens são rotacionados quando o servidor retorna um novo.
-- `access_token` nunca é logado.
-- `account_id` é mascarado no comando `status`.
-
-## Troubleshooting
-
-### `Port 1455 already in use`
-
-Outro processo (provavelmente o Codex CLI) está usando a porta. Feche-o ou ajuste `OAUTH_CALLBACK_PORT` (mas lembre que o fluxo OAuth do Codex espera `1455`).
-
-### `connection refused` no callback OAuth dentro de Docker
-
-**Isso é esperado no modo web.** O browser tenta abrir `localhost:1455` mas o container não está ouvindo essa porta — a solução é copiar a URL completa da barra de endereços e colar na tela de `/login`. Veja "Modo 1: Login web" acima.
-
-Alternativas:
-
-- `--network host` (Linux) — o callback funciona naturalmente.
-- Modo env vars (importar tokens manuais).
-
-### `400 Bad Request: Instructions are not valid`
-
-O Codex backend rejeita requests sem `instructions`. O proxy injeta `"You are a helpful assistant."` como fallback automaticamente quando o cliente não envia system message.
-
-### `401 upstream_error` após algum tempo
-
-O `access_token` expirou e o refresh falhou (ex: `refresh_token` revogado). Refaça o login: `bun run login`.
+Para publicar a imagem localmente (validação do Dockerfile): `docker build -t chatgpt-proxy .`
 
 ## Desenvolvimento
 
 ```bash
-bun install
-bun test          # 100 testes, estrutura AAA
-bun run typecheck # tsc --noEmit strict
-bun run dev       # watch mode
+uv sync                 # instala deps (inclui grupo dev)
+uv run pytest           # suíte completa (upstream mockado com respx)
+uv run fastapi dev      # servidor com reload
 ```
 
-## Stack
+Arquitetura:
 
-- **Runtime:** Bun
-- **Framework:** Hono
-- **Linguagem:** TypeScript (strict)
-- **Testes:** `bun:test`
+```
+app/
+├── main.py            # app FastAPI, lifespan, exception handler
+├── config.py          # settings via env (pydantic-settings)
+├── database.py        # engine + init idempotente
+├── models.py          # User, ApiKey, Setting (SQLModel)
+├── security.py        # geração/hash de keys, auth admin
+├── oauth.py           # PKCE, troca/refresh de token, JWT
+├── credentials.py     # store de credenciais (env > banco) + refresh
+├── codex.py           # engines LiteLLM/HTTPX
+├── deps.py            # dependencies de auth
+├── allowlist.py       # modelos do ChatGPT Plan
+├── converters/        # chat↔responses, SSE, anthropic↔chat
+└── routers/           # login, admin, models, responses, chat, anthropic
+```
 
-## Referências
+## Por que não LiteLLM nos conversores?
 
-- [Reverse engineering Codex CLI](https://simonwillison.net/2025/Nov/9/gpt-5-codex-mini/) — Simon Willison
-- [Responses streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events/) — OpenAI API Reference
-- [Codex CLI remote OAuth issue](https://github.com/openai/codex/issues/2798)
+O LiteLLM é usado como **engine upstream** (Responses API, `openai/` + `api_base` customizado). As conversões de formato são feitas no proxy por serem o comportamento validado do código original (port de `chatgpt-openai-proxy` Bun/Hono) — o endpoint do plano ChatGPT fala Responses API com `store: false` obrigatório, e manter os conversores locais torna o comportamento testável e idêntico entre as engines. Se preferir tirar o LiteLLM do caminho, `UPSTREAM_ENGINE=httpx` usa o client direto.
+
+## Testes
+
+60 testes cobrindo: OAuth/PKCE/JWT, conversores (chat, responses, anthropic), streams SSE, credenciais (precedência + refresh), engines, endpoints HTTP (chat/responses/anthropic/admin/login) com o upstream Codex mockado.
