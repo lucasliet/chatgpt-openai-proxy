@@ -97,7 +97,7 @@ async def login_complete(
     except (json.JSONDecodeError, KeyError, TypeError):
         raise _login_error("Sessão de login corrompida. Reinicie o fluxo.")
 
-    parsed = _parse_callback_url(payload.callbackUrl)
+    parsed = _parse_callback_url(payload.callbackUrl.strip())
     if "error" in parsed:
         request.session.pop("pkce", None)
         raise _login_error(parsed["error"])
@@ -260,9 +260,9 @@ def _render_login_html(callback_port: int) -> str:
     <div id="step2" class="step hidden">
       <ol>
         <li>Abra o link abaixo e autorize o acesso no ChatGPT.</li>
-        <li>Ao final, o navegador tentará abrir <code>localhost:{callback_port}/...</code> e pode mostrar erro — <strong>isso é normal em Docker/remoto</strong>.</li>
-        <li>Copie a <strong>URL completa</strong> da barra de endereços do navegador.</li>
-        <li>Cole a URL no campo abaixo e clique em Concluir.</li>
+        <li>Quando o navegador mostrar um erro ao tentar abrir <code>localhost:{callback_port}/...</code> (<strong>normal em Docker/remoto</strong>), não feche a aba.</li>
+        <li>Copie a <strong>URL completa da barra de endereços</strong> — ela começa com <code>http://localhost:{callback_port}/auth/callback?code=...</code>.</li>
+        <li>Cole essa URL no campo abaixo e clique em Concluir.</li>
       </ol>
       <a id="authLink" class="btn" target="_blank" rel="noopener">Abrir página de autorização ↗</a>
     </div>
@@ -286,7 +286,11 @@ def _render_login_html(callback_port: int) -> str:
       btn.textContent = 'Gerando URL...';
       try {{
         const resp = await fetch('/login/start', {{ method: 'POST' }});
-        const data = await resp.json();
+        const text = await resp.text();
+        let data;
+        try {{ data = JSON.parse(text); }} catch (parseErr) {{
+          throw new Error('Resposta inesperada do servidor (HTTP ' + resp.status + '). Tente novamente em instantes.');
+        }}
         if (!resp.ok) throw new Error(data.error?.message || 'Erro');
         document.getElementById('authLink').href = data.authUrl;
         document.getElementById('step2').classList.remove('hidden');
@@ -302,6 +306,14 @@ def _render_login_html(callback_port: int) -> str:
     async function completeLogin() {{
       const callbackUrl = document.getElementById('callbackInput').value.trim();
       if (!callbackUrl) {{ showStatus('Cole a URL de callback.', 'err'); return; }}
+      if (callbackUrl.includes('auth.openai.com')) {{
+        showStatus('Você colou a URL de autorização (auth.openai.com). Copie a URL da barra de endereços depois que o navegador falhar ao abrir localhost:{callback_port} — ela começa com http://localhost:{callback_port}/auth/callback?code=...', 'err');
+        return;
+      }}
+      if (!callbackUrl.includes('/auth/callback')) {{
+        showStatus('A URL precisa conter /auth/callback?code=... Verifique se copiou a URL inteira da barra de endereços.', 'err');
+        return;
+      }}
       const btn = document.getElementById('completeBtn');
       btn.disabled = true;
       btn.textContent = 'Validando...';
@@ -311,7 +323,11 @@ def _render_login_html(callback_port: int) -> str:
           headers: {{ 'Content-Type': 'application/json' }},
           body: JSON.stringify({{ callbackUrl }})
         }});
-        const data = await resp.json();
+        const text = await resp.text();
+        let data;
+        try {{ data = JSON.parse(text); }} catch (parseErr) {{
+          throw new Error('Resposta inesperada do servidor (HTTP ' + resp.status + '). Tente novamente em instantes.');
+        }}
         if (!resp.ok) throw new Error(data.error?.message || 'Erro');
         showStatus('Login concluído! Conta: ' + (data.accountId || '?') + '. Use a API key abaixo no proxy.', 'ok');
         const box = document.getElementById('apiKeyBox');
