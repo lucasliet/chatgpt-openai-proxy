@@ -19,8 +19,22 @@ from .config import get_settings
 _engine: Engine | None = None
 
 
+def _normalize_url(url: str) -> str:
+    """Normaliza DATABASE_URL para o driver disponível.
+
+    Postgres gerenciado (Neon/FastAPI Cloud) costuma vir como ``postgres://``
+    ou ``postgresql://``; o SQLAlchemy associa esse último ao psycopg2, mas o
+    projeto empacota o psycopg 3 — então forçamos o dialect ``psycopg``.
+    """
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://") :]
+    return url
+
+
 def _make_engine() -> Engine:
-    url = get_settings().database_url
+    url = _normalize_url(get_settings().database_url)
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         # check_same_thread=False é seguro: o Session é por-request e o
