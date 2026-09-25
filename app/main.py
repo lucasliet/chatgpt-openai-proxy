@@ -24,6 +24,10 @@ from .security import generate_api_key
 
 logger = logging.getLogger("chatgpt-proxy")
 
+# O runner do FastAPI Cloud (uvicorn) não configura o root logger: sem isso,
+# logs de aplicação (ex.: origem da listagem de /v1/models) nunca saem.
+logging.basicConfig(level=logging.INFO)
+
 
 def _bootstrap_admin_key(settings: Settings) -> None:
     """Garante uma chave de admin disponível.
