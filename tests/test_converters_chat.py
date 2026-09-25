@@ -99,6 +99,89 @@ class TestChatToResponses:
         assert payload["top_p"] == 0.9
         assert payload["stream"] is True
 
+    def test_vision_text_e_image_url_viram_input(self):
+        payload = chat_to_responses(
+            {
+                "model": "m",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "veja:"},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": "data:image/png;base64,QUJD",
+                                    "detail": "high",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+        assert payload["input"] == [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "veja:"},
+                    {
+                        "type": "input_image",
+                        "image_url": "data:image/png;base64,QUJD",
+                        "detail": "high",
+                    },
+                ],
+            }
+        ]
+
+    def test_vision_image_url_string_e_detail_invalido(self):
+        payload = chat_to_responses(
+            {
+                "model": "m",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": "https://ex.com/a.png",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "https://ex.com/b.png", "detail": "foo"},
+                            },
+                            {"type": "image_url", "image_url": {"url": ""}},
+                        ],
+                    }
+                ],
+            }
+        )
+        assert payload["input"][0]["content"] == [
+            {"type": "input_image", "image_url": "https://ex.com/a.png"},
+            {"type": "input_image", "image_url": "https://ex.com/b.png"},
+        ]
+
+    def test_vision_input_image_passthrough(self):
+        payload = chat_to_responses(
+            {
+                "model": "m",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "oi"},
+                            {"type": "input_image", "image_url": "https://ex.com/a.png"},
+                        ],
+                    }
+                ],
+            }
+        )
+        assert payload["input"][0]["content"] == [
+            {"type": "input_text", "text": "oi"},
+            {"type": "input_image", "image_url": "https://ex.com/a.png"},
+        ]
+
 
 class TestResponsesToChat:
     def _responses_response(self, output, usage=None):

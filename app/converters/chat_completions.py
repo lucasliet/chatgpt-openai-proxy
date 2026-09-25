@@ -10,6 +10,8 @@ Regras preservadas do código original:
 - ``tools[].function`` é achatado para ``tools[].{name, description, parameters}``.
 - ``max_completion_tokens`` sobrescreve ``max_tokens`` (ambos viram
   ``max_output_tokens``).
+- vision: partes ``text`` viram ``input_text`` e ``image_url`` viram
+  ``input_image`` (formato da Responses API).
 """
 
 from typing import Any
@@ -123,11 +125,51 @@ def _convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[st
                 {
                     "type": "message",
                     "role": role,
-                    "content": message.get("content") or "",
+                    "content": _convert_content(message.get("content")),
                 }
             )
 
     return "\n\n".join(instructions), input_items
+
+
+def _convert_content(content: Any) -> Any:
+    if isinstance(content, list):
+        converted: list[Any] = []
+        for part in content:
+            item = _convert_part(part)
+            if item is not None:
+                converted.append(item)
+        return converted
+    return content or ""
+
+
+def _convert_part(part: Any) -> dict[str, Any] | None:
+    if not isinstance(part, dict):
+        return part  # type: ignore[return-value]
+    part_type = part.get("type")
+    if part_type == "text":
+        return {"type": "input_text", "text": part.get("text", "")}
+    if part_type in ("input_text", "input_image"):
+        return part
+    if part_type == "image_url":
+        return _convert_image_url(part)
+    return part
+
+
+def _convert_image_url(part: dict[str, Any]) -> dict[str, Any] | None:
+    raw = part.get("image_url")
+    if isinstance(raw, dict):
+        url = raw.get("url", "")
+        detail = raw.get("detail", part.get("detail"))
+    else:
+        url = raw or part.get("url", "")
+        detail = part.get("detail")
+    if not url:
+        return None
+    converted: dict[str, Any] = {"type": "input_image", "image_url": url}
+    if detail in ("auto", "low", "high"):
+        converted["detail"] = detail
+    return converted
 
 
 def _extract_text(content: Any) -> str | None:
@@ -137,7 +179,9 @@ def _extract_text(content: Any) -> str | None:
         return content
     if isinstance(content, list):
         return "".join(
-            part.get("text", "") for part in content if part.get("type") == "text"
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") in ("text", "input_text")
         )
     return None
 

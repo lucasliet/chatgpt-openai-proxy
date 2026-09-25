@@ -52,6 +52,10 @@ def anthropic_to_chat(request: dict[str, Any]) -> dict[str, Any]:
                 if source.get("type") == "base64":
                     url = f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
                     image_parts.append({"type": "image_url", "image_url": {"url": url}})
+                elif source.get("type") == "url":
+                    url = source.get("url", "")
+                    if url:
+                        image_parts.append({"type": "image_url", "image_url": {"url": url}})
             elif block_type == "tool_use":
                 tool_calls.append(
                     {

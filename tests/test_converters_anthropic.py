@@ -70,6 +70,28 @@ class TestAnthropicToChat:
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,QUJD"}},
         ]
 
+    def test_bloco_imagem_url_source(self):
+        chat = anthropic_to_chat(
+            {
+                "model": "m",
+                "max_tokens": 1,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {"type": "url", "url": "https://ex.com/a.png"},
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+        assert chat["messages"][0]["content"] == [
+            {"type": "image_url", "image_url": {"url": "https://ex.com/a.png"}},
+        ]
+
     def test_assistant_com_tool_use(self):
         chat = anthropic_to_chat(
             {
