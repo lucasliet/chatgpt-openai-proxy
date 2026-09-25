@@ -1,7 +1,15 @@
 """Testes do banco: normalização de URL e storage local sem DATABASE_URL."""
 
+from sqlalchemy import BigInteger
+
 from app.config import Settings, resolved_database_url
 from app.database import _normalize_url
+from app.models import User
+
+
+def test_expires_at_e_bigint_no_modelo():
+    """Epoch em ms (~1,79e12) não cabe no INTEGER de 32 bits do Postgres."""
+    assert isinstance(User.__table__.c.expires_at.type, BigInteger)
 
 
 class TestNormalizeUrl:

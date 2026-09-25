@@ -13,6 +13,7 @@ cifrar em repouso (KMS/coluna cifrada) — o schema já isola os campos.
 
 from datetime import datetime, timezone
 
+from sqlalchemy import BigInteger
 from sqlmodel import Field, SQLModel
 
 
@@ -37,7 +38,7 @@ class User(SQLModel, table=True):
     # Credencial OAuth da assinatura ChatGPT deste usuário.
     access_token: str = Field(default="")
     refresh_token: str = Field(default="")
-    expires_at: int = Field(default=0)  # ms epoch; 0 = não autenticado
+    expires_at: int = Field(default=0, sa_type=BigInteger)  # ms epoch; 0 = não autenticado
 
 
 class ApiKey(SQLModel, table=True):

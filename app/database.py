@@ -10,7 +10,7 @@ EXISTS`), segura para deploys zero-downtime com múltiplas instâncias.
 import os
 from collections.abc import Generator
 
-from sqlalchemy import event, inspect, text
+from sqlalchemy import BIGINT, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import SQLModel, Session, create_engine
 
@@ -106,11 +106,34 @@ def _run_column_migrations(engine: Engine) -> None:
             connection.execute(text(statement))
 
 
+def _ensure_user_column_types(engine: Engine) -> None:
+    """Corrige tipos de colunas em bancos criados por versões antigas.
+
+    ``expires_at`` guarda epoch em milissegundos (~1,79e12 hoje), que não
+    cabe no INTEGER de 32 bits do Postgres. Bancos criados quando o modelo
+    usava ``int`` puro têm a coluna como INTEGER e precisam de ALTER COLUMN;
+    o SQLite tem inteiros de 64 bits nativos e não precisa de correção.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    inspector = inspect(engine)
+    if "proxy_user" not in inspector.get_table_names():
+        return
+    for column in inspector.get_columns("proxy_user"):
+        if column["name"] == "expires_at" and not isinstance(column["type"], BIGINT):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE proxy_user ALTER COLUMN expires_at TYPE BIGINT")
+                )
+            break
+
+
 def init_db() -> None:
     """Cria as tabelas se não existirem (idempotente, seguro no boot)."""
     engine = get_engine()
     SQLModel.metadata.create_all(engine)
     _run_column_migrations(engine)
+    _ensure_user_column_types(engine)
 
 
 def get_session() -> Generator[Session, None, None]:
