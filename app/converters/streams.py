@@ -72,16 +72,62 @@ async def aggregate_responses_events(
 ) -> dict[str, Any] | None:
     """Agrega um stream de eventos Responses no objeto Response completo.
 
-    O evento ``response.completed`` carrega o objeto ``response`` inteiro,
-    então a agregação é simplesmente capturá-lo. Retorna ``None`` se o
+    Usa o objeto ``response`` do evento ``response.completed`` como base, mas
+    não confia em ``output`` vir preenchido (a engine litellm o devolve vazio
+    em alguns modelos): nesse caso reconstrói os itens de saída a partir dos
+    deltas de texto e dos eventos de function call. Retorna ``None`` se o
     stream terminar sem ``response.completed``.
     """
+    completed: dict[str, Any] | None = None
+    text_parts: list[str] = []
+    tool_calls: dict[int, dict[str, Any]] = {}
+
     async for event in events:
-        if event.get("type") == "response.completed":
+        event_type = event.get("type")
+        if event_type == "response.output_text.delta":
+            text_parts.append(event.get("delta", ""))
+        elif event_type == "response.output_item.added":
+            item = event.get("item", {})
+            if item.get("type") == "function_call":
+                index = event.get("output_index", 0)
+                tool_calls[index] = {
+                    "id": item.get("call_id"),
+                    "name": item.get("name"),
+                    "arguments": "",
+                }
+        elif event_type == "response.function_call_arguments.delta":
+            index = event.get("output_index", 0)
+            if index in tool_calls:
+                tool_calls[index]["arguments"] += event.get("delta", "")
+        elif event_type == "response.completed":
             response = event.get("response")
             if isinstance(response, dict):
-                return response
-    return None
+                completed = response
+
+    if completed is None:
+        return None
+    if not completed.get("output"):
+        output: list[dict[str, Any]] = []
+        if text_parts:
+            output.append(
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "".join(text_parts)}],
+                }
+            )
+        for index in sorted(tool_calls):
+            call = tool_calls[index]
+            output.append(
+                {
+                    "type": "function_call",
+                    "call_id": call["id"],
+                    "name": call["name"],
+                    "arguments": call["arguments"],
+                }
+            )
+        completed["output"] = output
+    return completed
 
 
 async def responses_events_to_chat_chunks(

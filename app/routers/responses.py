@@ -32,6 +32,17 @@ async def create_response(
     engine: Engine = request.app.state.engine
     payload: dict[str, Any] = await request.json()
 
+    # A Responses API aceita ``input`` como string, mas a engine litellm
+    # exige lista — normaliza para o formato de mensagem.
+    if isinstance(payload.get("input"), str):
+        payload["input"] = [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": payload["input"]}],
+            }
+        ]
+
     if payload.get("stream"):
         return StreamingResponse(
             _sse_relay(engine, credentials, payload),

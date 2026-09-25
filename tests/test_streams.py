@@ -4,6 +4,7 @@ import json
 
 from app.converters.streams import (
     DONE_FRAME,
+    aggregate_responses_events,
     format_sse,
     iter_sse_events,
     responses_events_to_chat_chunks,
@@ -172,3 +173,66 @@ class TestResponsesEventsToChatChunks:
 def test_format_sse_e_done():
     assert format_sse({"a": 1}) == b'data: {"a": 1}\n\n'
     assert DONE_FRAME == b"data: [DONE]\n\n"
+
+
+class TestAggregateResponsesEvents:
+    async def _events(self, events):
+        for event in events:
+            yield event
+
+    async def test_usa_output_do_completed_quando_presente(self):
+        response = {"id": "r", "model": "m", "output": [{"type": "message"}], "usage": {}}
+        result = await aggregate_responses_events(
+            self._events([{"type": "response.completed", "response": response}])
+        )
+        assert result == response
+
+    async def test_reconstrói_output_vazio_a_partir_dos_deltas(self):
+        events = [
+            {"type": "response.output_text.delta", "delta": "Olá"},
+            {"type": "response.output_text.delta", "delta": " mundo"},
+            {
+                "type": "response.completed",
+                "response": {"id": "r", "model": "m", "output": [], "usage": {}},
+            },
+        ]
+        result = await aggregate_responses_events(self._events(events))
+        assert result is not None
+        assert result["output"] == [
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Olá mundo"}],
+            }
+        ]
+
+    async def test_reconstrói_function_calls(self):
+        events = [
+            {
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": {"type": "function_call", "call_id": "c1", "name": "buscar"},
+            },
+            {"type": "response.function_call_arguments.delta", "output_index": 0, "delta": '{"q"'},
+            {"type": "response.function_call_arguments.delta", "output_index": 0, "delta": ": 1}"},
+            {
+                "type": "response.completed",
+                "response": {"id": "r", "model": "m", "output": [], "usage": {}},
+            },
+        ]
+        result = await aggregate_responses_events(self._events(events))
+        assert result is not None
+        assert result["output"] == [
+            {
+                "type": "function_call",
+                "call_id": "c1",
+                "name": "buscar",
+                "arguments": '{"q": 1}',
+            }
+        ]
+
+    async def test_sem_completed_retorna_none(self):
+        result = await aggregate_responses_events(
+            self._events([{"type": "response.output_text.delta", "delta": "x"}])
+        )
+        assert result is None

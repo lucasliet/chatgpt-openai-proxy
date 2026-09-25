@@ -127,6 +127,25 @@ class TestResponsesEndpoint:
         assert response.status_code == 429
         assert response.json()["error"]["type"] == "upstream_error"
 
+    def test_input_string_e_normalizado_para_lista(self, client, auth_headers):
+        route = respx.post(CODEX_URL).mock(
+            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+        )
+        response = client.post(
+            "/v1/responses",
+            headers=auth_headers,
+            json={"model": "gpt-5.1-codex", "input": "diz oi"},
+        )
+        assert response.status_code == 200
+        sent = json.loads(route.calls.last.request.content)
+        assert sent["input"] == [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "diz oi"}],
+            }
+        ]
+
 
 @respx.mock
 class TestChatCompletionsEndpoint:
