@@ -43,14 +43,14 @@ class TestLiteLLMEngineKwargs:
     def test_mapeamento_para_codex(self):
         engine = LiteLLMEngine(get_settings())
         payload = {
-            "model": "gpt-5.5",
+            "model": "gpt-6-terra",
             "input": [{"type": "message", "role": "user", "content": "oi"}],
             "store": False,
             "instructions": "Seja breve.",
             "stream": None,  # deve ser removido (None)
         }
         kwargs = engine._kwargs(_creds(), payload)
-        assert kwargs["model"] == "openai/gpt-5.5"
+        assert kwargs["model"] == "openai/gpt-6-terra"
         assert kwargs["api_base"] == get_settings().codex_base_url
         assert kwargs["api_key"] == "at-x"
         assert kwargs["extra_headers"] == {"ChatGPT-Account-Id": "acc-x"}
@@ -100,9 +100,9 @@ class TestHttpxEngine:
     async def test_list_models_ok(self):
         engine = HttpxEngine(get_settings())
         route = respx.get(CODEX_MODELS_URL).mock(
-            return_value=Response(200, json={"models": ["gpt-5.5", "gpt-5.6-luna"]})
+            return_value=Response(200, json={"models": ["gpt-6-terra", "gpt-6-luna"]})
         )
-        assert await engine.list_models(_creds()) == ["gpt-5.5", "gpt-5.6-luna"]
+        assert await engine.list_models(_creds()) == ["gpt-6-terra", "gpt-6-luna"]
         request = route.calls.last.request
         assert request.headers["Authorization"] == "Bearer at-x"
         assert "client_version" in request.url.params

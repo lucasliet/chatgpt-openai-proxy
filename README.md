@@ -72,11 +72,11 @@ export KEY="sk-..."
 
 curl https://<app>.fastapicloud.dev/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"model": "gpt-5.5", "messages": [{"role": "user", "content": "oi"}]}'
+  -d '{"model": "gpt-6-luna", "messages": [{"role": "user", "content": "oi"}]}'
 
 curl https://<app>.fastapicloud.dev/v1/responses \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"model": "gpt-5.5", "input": "oi", "store": false}'
+  -d '{"model": "gpt-6-luna", "input": "oi", "store": false}'
 
 curl https://<app>.fastapicloud.dev/v1/messages \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
@@ -90,14 +90,14 @@ Compatibilidade com clientes oficiais:
 ```python
 from openai import OpenAI
 client = OpenAI(base_url="https://<app>.fastapicloud.dev/v1", api_key="sk-...")
-client.chat.completions.create(model="gpt-5.5", messages=[...])
+client.chat.completions.create(model="gpt-6-luna", messages=[...])
 ```
 
 ```python
 import anthropic
 client = anthropic.Anthropic(base_url="https://<app>.fastapicloud.dev", api_key="sk-...")
 client.messages.create(model="claude-sonnet-4-5", max_tokens=1024, messages=[...])
-# modelos claude-* caem no DEFAULT_MODEL (gpt-5.5) upstream
+# modelos claude-* caem no DEFAULT_MODEL (gpt-6-luna) upstream
 ```
 
 ## Configuração
@@ -108,7 +108,7 @@ client.messages.create(model="claude-sonnet-4-5", max_tokens=1024, messages=[...
 | `DATABASE_URL` | — (SQLite local) | Postgres em produção; sem definir, usa `CHATGPT_PROXY_HOME/proxy.db` |
 | `CHATGPT_PROXY_HOME` | `~/.config/chatgpt-proxy` | Diretório do armazenamento local |
 | `UPSTREAM_ENGINE` | `litellm` | `litellm` (default) ou `httpx` |
-| `DEFAULT_MODEL` | `gpt-5.5` | Modelo quando o pedido está fora da allowlist |
+| `DEFAULT_MODEL` | `gpt-6-luna` | Modelo quando o pedido está fora da allowlist |
 | `ADMIN_API_KEY` | — (gerada no boot) | Chave dos endpoints `/admin/*` |
 | `COOKIE_SECRET` | dev | Segredo do cookie de sessão do `/login` |
 | `CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Backend do plano ChatGPT |

@@ -1,15 +1,16 @@
-"""Allowlist de modelos do ChatGPT Plan.
+"""Allowlist de modelos do ChatGPT Plan — fallback do GET /v1/models.
 
-Validada em 2026-09-25 contra o backend Codex: os demais modelos da lista
-antiga (gpt-5.1-codex*, gpt-5.2/5.3-codex, gpt-5.4*, codex-mini-latest)
-passaram a responder ``model is not supported when using Codex with a
-ChatGPT account``. Como o backend não expõe listagem dinâmica, a allowlist
-fica hardcoded — atualize conforme o plano for ganhando modelos.
+O proxy tenta listar dinamicamente de ``{codex_base_url}/models``; esta
+lista estática só é usada se essa chamada falhar. Atualizada em
+2026-09-25 com os modelos suportados pelo backend do plano
+(gpt-5.* anteriores foram removidos: "model is not supported").
 """
 
 ALLOWED_MODELS = [
-    "gpt-5.5",
-    "gpt-5.6-luna",
+    "gpt-6-luna",
+    "gpt-6-terra",
+    "gpt-6-sol",
+    "gpt-6-astra",
 ]
 
 _MODEL_CREATED_AT = 1_700_000_000
