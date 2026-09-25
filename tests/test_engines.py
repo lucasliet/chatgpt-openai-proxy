@@ -36,14 +36,14 @@ class TestLiteLLMEngineKwargs:
     def test_mapeamento_para_codex(self):
         engine = LiteLLMEngine(get_settings())
         payload = {
-            "model": "gpt-5.1-codex",
+            "model": "gpt-5.5",
             "input": [{"type": "message", "role": "user", "content": "oi"}],
             "store": False,
             "instructions": "Seja breve.",
             "stream": None,  # deve ser removido (None)
         }
         kwargs = engine._kwargs(_creds(), payload)
-        assert kwargs["model"] == "openai/gpt-5.1-codex"
+        assert kwargs["model"] == "openai/gpt-5.5"
         assert kwargs["api_base"] == get_settings().codex_base_url
         assert kwargs["api_key"] == "at-x"
         assert kwargs["extra_headers"] == {"ChatGPT-Account-Id": "acc-x"}

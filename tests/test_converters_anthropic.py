@@ -168,7 +168,7 @@ class TestChatToAnthropic:
         return {
             "id": "chatcmpl-1",
             "object": "chat.completion",
-            "model": "gpt-5.1-codex",
+            "model": "gpt-5.5",
             "choices": [
                 {"index": 0, "message": message, "finish_reason": finish_reason}
             ],

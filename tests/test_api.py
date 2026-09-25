@@ -10,7 +10,7 @@ CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 
 SSE_TEXTO = (
     'data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Olá"}\n\n'
-    'data: {"type":"response.completed","response":{"id":"resp_abc","object":"response","model":"gpt-5.1-codex",'
+    'data: {"type":"response.completed","response":{"id":"resp_abc","object":"response","model":"gpt-5.5",'
     '"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Olá"}]}],'
     '"usage":{"input_tokens":10,"output_tokens":5}}}\n\n'
 )
@@ -18,7 +18,7 @@ SSE_TEXTO = (
 SSE_TEXTO_RESPONSE = {
     "id": "resp_abc",
     "object": "response",
-    "model": "gpt-5.1-codex",
+    "model": "gpt-5.5",
     "output": [
         {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Olá"}]}
     ],
@@ -41,7 +41,7 @@ class TestHealthEModels:
         data = response.json()
         assert data["object"] == "list"
         ids = [m["id"] for m in data["data"]]
-        assert "gpt-5.1-codex" in ids
+        assert "gpt-5.5" in ids
 
 
 class TestAdmin:
@@ -89,7 +89,7 @@ class TestResponsesEndpoint:
         response = client.post(
             "/v1/responses",
             headers=auth_headers,
-            json={"model": "gpt-5.1-codex", "input": "diz oi", "store": False},
+            json={"model": "gpt-5.5", "input": "diz oi", "store": False},
         )
         assert response.status_code == 200
         # Não-streaming agrega o objeto ``response`` do response.completed.
@@ -109,7 +109,7 @@ class TestResponsesEndpoint:
         response = client.post(
             "/v1/responses",
             headers=auth_headers,
-            json={"model": "gpt-5.1-codex", "input": "diz oi", "stream": True},
+            json={"model": "gpt-5.5", "input": "diz oi", "stream": True},
         )
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
@@ -122,7 +122,7 @@ class TestResponsesEndpoint:
         response = client.post(
             "/v1/responses",
             headers=auth_headers,
-            json={"model": "gpt-5.1-codex", "input": "x"},
+            json={"model": "gpt-5.5", "input": "x"},
         )
         assert response.status_code == 429
         assert response.json()["error"]["type"] == "upstream_error"
@@ -134,7 +134,7 @@ class TestResponsesEndpoint:
         response = client.post(
             "/v1/responses",
             headers=auth_headers,
-            json={"model": "gpt-5.1-codex", "input": "diz oi"},
+            json={"model": "gpt-5.5", "input": "diz oi"},
         )
         assert response.status_code == 200
         sent = json.loads(route.calls.last.request.content)
@@ -157,7 +157,7 @@ class TestChatCompletionsEndpoint:
             "/v1/chat/completions",
             headers=auth_headers,
             json={
-                "model": "gpt-5.1-codex",
+                "model": "gpt-5.5",
                 "messages": [
                     {"role": "system", "content": "Seja breve."},
                     {"role": "user", "content": "diz oi"},
@@ -185,7 +185,7 @@ class TestChatCompletionsEndpoint:
         response = client.post(
             "/v1/chat/completions",
             headers=auth_headers,
-            json={"model": "gpt-5.1-codex", "messages": [{"role": "user", "content": "oi"}], "stream": True},
+            json={"model": "gpt-5.5", "messages": [{"role": "user", "content": "oi"}], "stream": True},
         )
         assert response.status_code == 200
         frames = [f for f in response.text.split("data: ") if f.strip()]
@@ -231,7 +231,7 @@ class TestAnthropicEndpoint:
 
         # Upstream recebeu o default_model (claude-* não está na allowlist).
         sent = json.loads(route.calls.last.request.content)
-        assert sent["model"] == "gpt-5.1-codex"
+        assert sent["model"] == "gpt-5.5"
         assert sent["instructions"] == "Seja breve."
 
     def test_streaming(self, client, auth_headers):
@@ -263,7 +263,7 @@ class TestAnthropicEndpoint:
         response = client.post(
             "/v1/messages",
             headers={"Authorization": f"Bearer {key}"},
-            json={"model": "gpt-5.1-codex", "max_tokens": 1, "messages": []},
+            json={"model": "gpt-5.5", "max_tokens": 1, "messages": []},
         )
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "no_credentials"
@@ -316,7 +316,7 @@ class TestLoginFlow:
         response = client.post(
             "/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": "gpt-5.1-codex", "messages": [{"role": "user", "content": "oi"}]},
+            json={"model": "gpt-5.5", "messages": [{"role": "user", "content": "oi"}]},
         )
         assert response.status_code == 200
         assert route.calls.last.request.headers["Authorization"] == "Bearer at-login"

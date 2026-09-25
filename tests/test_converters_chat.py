@@ -9,7 +9,7 @@ from app.converters.chat_completions import (
 
 class TestChatToResponses:
     def test_store_false_sempre_presente(self):
-        payload = chat_to_responses({"model": "gpt-5.1-codex", "messages": []})
+        payload = chat_to_responses({"model": "gpt-5.5", "messages": []})
         assert payload["store"] is False
 
     def test_instructions_fallback_quando_sem_system(self):
@@ -189,7 +189,7 @@ class TestResponsesToChat:
         return {
             "id": "resp_1",
             "object": "response",
-            "model": "gpt-5.1-codex",
+            "model": "gpt-5.5",
             "output": output,
             "usage": usage or {"input_tokens": 3, "output_tokens": 7},
         }

@@ -147,7 +147,7 @@ class TestApiKeySemCredencial:
         response = client.post(
             "/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}"},
-            json={"model": "gpt-5.1-codex", "messages": [{"role": "user", "content": "oi"}]},
+            json={"model": "gpt-5.5", "messages": [{"role": "user", "content": "oi"}]},
         )
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "no_credentials"

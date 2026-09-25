@@ -1,15 +1,15 @@
-"""Allowlist de modelos do ChatGPT Plan (port de ``codex/models.ts``)."""
+"""Allowlist de modelos do ChatGPT Plan.
+
+Validada em 2026-09-25 contra o backend Codex: os demais modelos da lista
+antiga (gpt-5.1-codex*, gpt-5.2/5.3-codex, gpt-5.4*, codex-mini-latest)
+passaram a responder ``model is not supported when using Codex with a
+ChatGPT account``. Como o backend não expõe listagem dinâmica, a allowlist
+fica hardcoded — atualize conforme o plano for ganhando modelos.
+"""
 
 ALLOWED_MODELS = [
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-max",
-    "gpt-5.1-codex-mini",
-    "gpt-5.2-codex",
-    "gpt-5.3-codex",
-    "gpt-5.4",
-    "gpt-5.4-mini",
     "gpt-5.5",
-    "codex-mini-latest",
+    "gpt-5.6-luna",
 ]
 
 _MODEL_CREATED_AT = 1_700_000_000

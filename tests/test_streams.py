@@ -58,7 +58,7 @@ class TestResponsesEventsToChatChunks:
                 "type": "response.completed",
                 "response": {
                     "id": "resp_1",
-                    "model": "gpt-5.1-codex",
+                    "model": "gpt-5.5",
                     "output": [],
                     "usage": {"input_tokens": 11, "output_tokens": 4},
                 },
@@ -67,7 +67,7 @@ class TestResponsesEventsToChatChunks:
         chunks = [
             c
             async for c in responses_events_to_chat_chunks(
-                self._events(events), "gpt-5.1-codex"
+                self._events(events), "gpt-5.5"
             )
         ]
 
@@ -116,7 +116,7 @@ class TestResponsesEventsToChatChunks:
                 "type": "response.completed",
                 "response": {
                     "id": "resp_2",
-                    "model": "gpt-5.1-codex",
+                    "model": "gpt-5.5",
                     "output": [],
                     "usage": {"input_tokens": 20, "output_tokens": 8},
                 },
@@ -125,7 +125,7 @@ class TestResponsesEventsToChatChunks:
         chunks = [
             c
             async for c in responses_events_to_chat_chunks(
-                self._events(events), "gpt-5.1-codex"
+                self._events(events), "gpt-5.5"
             )
         ]
 
