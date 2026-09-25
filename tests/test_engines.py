@@ -103,7 +103,9 @@ class TestHttpxEngine:
             return_value=Response(200, json={"models": ["gpt-5.5", "gpt-5.6-luna"]})
         )
         assert await engine.list_models(_creds()) == ["gpt-5.5", "gpt-5.6-luna"]
-        assert route.calls.last.request.headers["Authorization"] == "Bearer at-x"
+        request = route.calls.last.request
+        assert request.headers["Authorization"] == "Bearer at-x"
+        assert "client_version" in request.url.params
 
     async def test_list_models_erro(self):
         engine = HttpxEngine(get_settings())

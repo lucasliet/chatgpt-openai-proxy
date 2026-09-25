@@ -74,8 +74,12 @@ def extract_model_ids(data: Any) -> list[str]:
 
 
 async def _fetch_model_ids(base_url: str, headers: dict[str, str]) -> list[str]:
+    # O backend exige o query param client_version (o Codex CLI sempre envia).
+    params = {"client_version": "0.13.0"}
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
+        response = await client.get(
+            f"{base_url.rstrip('/')}/models", headers=headers, params=params
+        )
     if response.status_code >= 400:
         raise UpstreamError(response.status_code, response.text)
     return extract_model_ids(response.json())
