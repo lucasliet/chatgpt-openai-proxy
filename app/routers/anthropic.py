@@ -28,7 +28,7 @@ from ..converters.anthropic import (
     format_anthropic_sse,
 )
 from ..converters.chat_completions import chat_to_responses, responses_to_chat
-from ..converters.streams import responses_events_to_chat_chunks
+from ..converters.streams import aggregate_responses_events, responses_events_to_chat_chunks
 from ..database import get_session
 from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
@@ -66,10 +66,18 @@ async def create_message(
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
+    # Backend exige stream=true: não-streaming agrega via stream upstream.
+    payload["stream"] = True
     try:
-        response = await engine.responses(credentials, payload)
+        response = await aggregate_responses_events(
+            engine.responses_stream(credentials, payload)
+        )
     except UpstreamError as error:
         return upstream_error_response(error)
+    if response is None:
+        return upstream_error_response(
+            UpstreamError(502, "stream encerrada sem response.completed")
+        )
     return JSONResponse(chat_to_anthropic(responses_to_chat(response), requested_model))
 
 

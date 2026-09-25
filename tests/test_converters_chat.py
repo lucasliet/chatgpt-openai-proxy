@@ -74,7 +74,8 @@ class TestChatToResponses:
         )
         assert payload["tool_choice"] == {"type": "function", "name": "buscar"}
 
-    def test_max_completion_tokens_sobrescreve_max_tokens(self):
+    def test_max_tokens_nao_e_repassado(self):
+        # O backend do plano rejeita max_output_tokens ("Unsupported parameter").
         payload = chat_to_responses(
             {
                 "model": "m",
@@ -83,7 +84,7 @@ class TestChatToResponses:
                 "max_completion_tokens": 200,
             }
         )
-        assert payload["max_output_tokens"] == 200
+        assert "max_output_tokens" not in payload
 
     def test_parametros_opcionais(self):
         payload = chat_to_responses(

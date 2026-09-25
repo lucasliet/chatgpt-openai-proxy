@@ -67,6 +67,23 @@ class _ToolCallAccumulator:
     arguments: str
 
 
+async def aggregate_responses_events(
+    events: AsyncIterable[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Agrega um stream de eventos Responses no objeto Response completo.
+
+    O evento ``response.completed`` carrega o objeto ``response`` inteiro,
+    então a agregação é simplesmente capturá-lo. Retorna ``None`` se o
+    stream terminar sem ``response.completed``.
+    """
+    async for event in events:
+        if event.get("type") == "response.completed":
+            response = event.get("response")
+            if isinstance(response, dict):
+                return response
+    return None
+
+
 async def responses_events_to_chat_chunks(
     events: AsyncIterable[dict[str, Any]], model: str
 ) -> AsyncIterator[dict[str, Any]]:

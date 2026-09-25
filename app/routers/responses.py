@@ -1,8 +1,9 @@
 """Rota POST /v1/responses — passthrough da Responses API para o Codex.
 
-O body é encaminhado ao backend (com ``store: false`` garantido no caso do
-chat completions; aqui o body segue como enviado pelo cliente) e a resposta
-é relayada, em streaming SSE ou JSON conforme ``stream``.
+O body é encaminhado ao backend e a resposta é relayada, em streaming SSE ou
+JSON conforme ``stream``. O backend Codex só aceita ``stream: true``: no modo
+não-streaming o proxy faz stream upstream e agrega o objeto ``response`` do
+evento ``response.completed`` antes de responder.
 """
 
 from typing import Annotated, Any
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
-from ..converters.streams import format_sse
+from ..converters.streams import aggregate_responses_events, format_sse
 from ..codex import Engine, UpstreamError
 from ..database import get_session
 from ..deps import AuthContext, require_api_key, require_user_credentials
@@ -38,10 +39,18 @@ async def create_response(
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
+    # Backend exige stream=true: não-streaming agrega via stream upstream.
+    payload = {**payload, "stream": True}
     try:
-        body = await engine.responses(credentials, payload)
+        body = await aggregate_responses_events(
+            engine.responses_stream(credentials, payload)
+        )
     except UpstreamError as error:
         return upstream_error_response(error)
+    if body is None:
+        return upstream_error_response(
+            UpstreamError(502, "stream encerrada sem response.completed")
+        )
     return JSONResponse(body)
 
 

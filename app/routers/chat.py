@@ -10,6 +10,7 @@ from ..codex import Engine, UpstreamError
 from ..converters.chat_completions import chat_to_responses, responses_to_chat
 from ..converters.streams import (
     DONE_FRAME,
+    aggregate_responses_events,
     format_sse,
     responses_events_to_chat_chunks,
 )
@@ -40,10 +41,19 @@ async def create_chat_completion(
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
+    # O backend Codex só aceita stream=true; no modo não-streaming usamos
+    # stream upstream e agregamos o objeto Response completo.
+    payload["stream"] = True
     try:
-        response = await engine.responses(credentials, payload)
+        response = await aggregate_responses_events(
+            engine.responses_stream(credentials, payload)
+        )
     except UpstreamError as error:
         return upstream_error_response(error)
+    if response is None:
+        return upstream_error_response(
+            UpstreamError(502, "stream encerrada sem response.completed")
+        )
     return JSONResponse(responses_to_chat(response))
 
 

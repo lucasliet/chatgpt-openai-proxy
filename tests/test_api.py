@@ -15,12 +15,12 @@ SSE_TEXTO = (
     '"usage":{"input_tokens":10,"output_tokens":5}}}\n\n'
 )
 
-RESPONSES_JSON = {
+SSE_TEXTO_RESPONSE = {
     "id": "resp_abc",
     "object": "response",
     "model": "gpt-5.1-codex",
     "output": [
-        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Olá!"}]}
+        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Olá"}]}
     ],
     "usage": {"input_tokens": 10, "output_tokens": 5},
 }
@@ -83,19 +83,24 @@ class TestAdmin:
 @respx.mock
 class TestResponsesEndpoint:
     def test_passthrough_json(self, client, auth_headers):
-        route = respx.post(CODEX_URL).mock(return_value=Response(200, json=RESPONSES_JSON))
+        route = respx.post(CODEX_URL).mock(
+            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+        )
         response = client.post(
             "/v1/responses",
             headers=auth_headers,
             json={"model": "gpt-5.1-codex", "input": "diz oi", "store": False},
         )
         assert response.status_code == 200
-        assert response.json() == RESPONSES_JSON
+        # Não-streaming agrega o objeto ``response`` do response.completed.
+        assert response.json() == SSE_TEXTO_RESPONSE
 
         # A credencial usada é a DO USUÁRIO da API key (alice / acc-alice).
         request = route.calls.last.request
         assert request.headers["Authorization"] == "Bearer at-acc-alice"
         assert request.headers["ChatGPT-Account-Id"] == "acc-alice"
+        # Backend só aceita stream=true, mesmo para cliente não-streaming.
+        assert json.loads(request.content)["stream"] is True
 
     def test_passthrough_stream(self, client, auth_headers):
         respx.post(CODEX_URL).mock(
@@ -126,7 +131,9 @@ class TestResponsesEndpoint:
 @respx.mock
 class TestChatCompletionsEndpoint:
     def test_nao_streaming(self, client, auth_headers):
-        route = respx.post(CODEX_URL).mock(return_value=Response(200, json=RESPONSES_JSON))
+        route = respx.post(CODEX_URL).mock(
+            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+        )
         response = client.post(
             "/v1/chat/completions",
             headers=auth_headers,
@@ -141,14 +148,16 @@ class TestChatCompletionsEndpoint:
         assert response.status_code == 200
         body = response.json()
         assert body["object"] == "chat.completion"
-        assert body["choices"][0]["message"]["content"] == "Olá!"
+        assert body["choices"][0]["message"]["content"] == "Olá"
         assert body["choices"][0]["finish_reason"] == "stop"
         assert body["usage"]["total_tokens"] == 15
 
-        # Payload enviado ao Codex: convertido com store=false + instructions.
+        # Payload enviado ao Codex: convertido com store=false + instructions,
+        # sempre stream=true (backend rejeita não-streaming).
         sent = json.loads(route.calls.last.request.content)
         assert sent["store"] is False
         assert sent["instructions"] == "Seja breve."
+        assert sent["stream"] is True
 
     def test_streaming(self, client, auth_headers):
         respx.post(CODEX_URL).mock(
@@ -174,7 +183,9 @@ class TestChatCompletionsEndpoint:
 @respx.mock
 class TestAnthropicEndpoint:
     def test_nao_streaming(self, client, auth_headers):
-        route = respx.post(CODEX_URL).mock(return_value=Response(200, json=RESPONSES_JSON))
+        route = respx.post(CODEX_URL).mock(
+            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+        )
         response = client.post(
             "/v1/messages",
             headers=auth_headers,
@@ -191,7 +202,11 @@ class TestAnthropicEndpoint:
         assert body["role"] == "assistant"
         # Modelo solicitado é ecoado para compatibilidade com clientes Claude.
         assert body["model"] == "claude-sonnet-4-5"
-        assert body["content"] == [{"type": "text", "text": "Olá!"}]
+        assert body["content"] == [{"type": "text", "text": "Olá"}]
+        # max_tokens do cliente não é repassado (backend rejeita max_output_tokens).
+        sent = json.loads(route.calls.last.request.content)
+        assert "max_output_tokens" not in sent
+        assert sent["stream"] is True
         assert body["stop_reason"] == "end_turn"
         assert body["usage"] == {"input_tokens": 10, "output_tokens": 5}
 
@@ -276,7 +291,9 @@ class TestLoginFlow:
 
         # A key gerada no login funciona nas rotas protegidas e usa a
         # credencial OAuth da conta que acabou de logar.
-        route = respx.post(CODEX_URL).mock(return_value=Response(200, json=RESPONSES_JSON))
+        route = respx.post(CODEX_URL).mock(
+            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+        )
         response = client.post(
             "/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},

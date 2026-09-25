@@ -8,8 +8,8 @@ Regras preservadas do código original:
 - system/developer viram ``instructions`` concatenadas com ``\\n\\n``.
 - mensagens ``tool`` viram ``function_call_output``.
 - ``tools[].function`` é achatado para ``tools[].{name, description, parameters}``.
-- ``max_completion_tokens`` sobrescreve ``max_tokens`` (ambos viram
-  ``max_output_tokens``).
+- ``max_tokens`` / ``max_completion_tokens`` **não** são repassados: o backend
+  do plano rejeita ``max_output_tokens`` ("Unsupported parameter").
 - vision: partes ``text`` viram ``input_text`` e ``image_url`` viram
   ``input_image`` (formato da Responses API).
 """
@@ -39,10 +39,6 @@ def chat_to_responses(request: dict[str, Any]) -> dict[str, Any]:
         payload["temperature"] = request["temperature"]
     if request.get("top_p") is not None:
         payload["top_p"] = request["top_p"]
-    if request.get("max_tokens") is not None:
-        payload["max_output_tokens"] = request["max_tokens"]
-    if request.get("max_completion_tokens") is not None:
-        payload["max_output_tokens"] = request["max_completion_tokens"]
     if request.get("stream"):
         payload["stream"] = True
 
