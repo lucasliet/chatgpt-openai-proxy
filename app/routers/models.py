@@ -9,6 +9,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
 from ..allowlist import list_allowed_models
@@ -38,6 +39,13 @@ def _format_model_list(model_ids: list[str]) -> dict:
     }
 
 
+def _models_response(model_ids: list[str], source: str) -> JSONResponse:
+    return JSONResponse(
+        content=_format_model_list(model_ids),
+        headers={"X-Models-Source": source},
+    )
+
+
 @router.get("")
 async def list_models(
     request: Request,
@@ -60,6 +68,7 @@ async def list_models(
         model_ids = []
     if model_ids:
         logger.info("/v1/models: %d modelos do backend Codex", len(model_ids))
-        return _format_model_list(model_ids)
+        return _models_response(model_ids, "dynamic")
 
-    return list_allowed_models()
+    fallback_ids = [m["id"] for m in list_allowed_models()["data"]]
+    return _models_response(fallback_ids, "fallback")
