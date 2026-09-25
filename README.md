@@ -125,7 +125,7 @@ O compose monta `./data:/root/.config/chatgpt-proxy` — o armazenamento local s
 
 ```bash
 uv sync                 # instala deps (inclui grupo dev)
-uv run pytest           # 66 testes (upstream Codex mockado com respx)
+uv run pytest           # 67 testes (upstream Codex mockado com respx)
 uv run fastapi dev      # servidor com reload
 ```
 

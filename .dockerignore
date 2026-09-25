@@ -17,4 +17,3 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 .fastapicloudignore
-.python-version
