@@ -142,7 +142,7 @@ app/
 ├── credentials.py     # refresh por usuário (lock por conta)
 ├── codex.py           # engines LiteLLM/HTTPX
 ├── deps.py            # auth: API key → usuário → credencial
-├── allowlist.py       # modelos do ChatGPT Plan
+├── allowlist.py       # fallback estático de modelos (usado se o /models do backend falhar)
 ├── converters/        # chat↔responses, SSE, anthropic↔chat
 └── routers/           # login, admin, models, responses, chat, anthropic
 ```

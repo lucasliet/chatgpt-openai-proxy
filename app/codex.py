@@ -46,6 +46,40 @@ class Engine(Protocol):
         self, credentials: Credentials, payload: dict[str, Any]
     ) -> AsyncIterator[dict[str, Any]]: ...
 
+    async def list_models(self, credentials: Credentials) -> list[str]: ...
+
+
+def extract_model_ids(data: Any) -> list[str]:
+    """Extrai ids de modelo de respostas com formatos distintos do backend.
+
+    Aceita lista de strings, lista de objetos (``id``/``model``/``slug``/
+    ``name``) e objetos com chaves ``models``/``data``/``supported_models``.
+    """
+    if isinstance(data, list):
+        ids: list[str] = []
+        for item in data:
+            ids.extend(extract_model_ids(item))
+        return ids
+    if isinstance(data, dict):
+        for key in ("models", "data", "supported_models", "model_ids"):
+            if key in data:
+                return extract_model_ids(data[key])
+        for key in ("id", "model", "slug", "name"):
+            value = data.get(key)
+            if isinstance(value, str) and value:
+                return [value]
+    if isinstance(data, str) and data:
+        return [data]
+    return []
+
+
+async def _fetch_model_ids(base_url: str, headers: dict[str, str]) -> list[str]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
+    if response.status_code >= 400:
+        raise UpstreamError(response.status_code, response.text)
+    return extract_model_ids(response.json())
+
 
 class HttpxEngine:
     """Engine direta via HTTPX — comportamento idêntico ao proxy original."""
@@ -98,6 +132,9 @@ class HttpxEngine:
                 raise UpstreamError(502, "stream encerrada sem response.completed")
         finally:
             await client.aclose()
+
+    async def list_models(self, credentials: Credentials) -> list[str]:
+        return await _fetch_model_ids(self._base_url, self._headers(credentials))
 
 
 class LiteLLMEngine:
@@ -167,6 +204,13 @@ class LiteLLMEngine:
                     break
         if not completed:
             raise UpstreamError(502, "stream encerrada sem response.completed")
+
+    async def list_models(self, credentials: Credentials) -> list[str]:
+        headers = {
+            "Authorization": f"Bearer {credentials.access_token}",
+            "ChatGPT-Account-Id": credentials.account_id,
+        }
+        return await _fetch_model_ids(self._settings.codex_base_url, headers)
 
 
 def _to_upstream_error(exc: Exception) -> UpstreamError:

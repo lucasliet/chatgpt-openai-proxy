@@ -4,11 +4,18 @@ import pytest
 import respx
 from httpx import Response
 
-from app.codex import HttpxEngine, LiteLLMEngine, UpstreamError, build_engine
+from app.codex import (
+    HttpxEngine,
+    LiteLLMEngine,
+    UpstreamError,
+    build_engine,
+    extract_model_ids,
+)
 from app.config import Settings, get_settings
 from app.oauth import Credentials
 
 CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
+CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models"
 
 
 def _creds() -> Credentials:
@@ -89,3 +96,33 @@ class TestHttpxEngine:
         with pytest.raises(UpstreamError) as exc_info:
             [e async for e in engine.responses_stream(_creds(), {"model": "m"})]
         assert exc_info.value.status == 401
+
+    async def test_list_models_ok(self):
+        engine = HttpxEngine(get_settings())
+        route = respx.get(CODEX_MODELS_URL).mock(
+            return_value=Response(200, json={"models": ["gpt-5.5", "gpt-5.6-luna"]})
+        )
+        assert await engine.list_models(_creds()) == ["gpt-5.5", "gpt-5.6-luna"]
+        assert route.calls.last.request.headers["Authorization"] == "Bearer at-x"
+
+    async def test_list_models_erro(self):
+        engine = HttpxEngine(get_settings())
+        respx.get(CODEX_MODELS_URL).mock(return_value=Response(500, text="boom"))
+        with pytest.raises(UpstreamError):
+            await engine.list_models(_creds())
+
+
+class TestExtractModelIds:
+    def test_lista_de_strings(self):
+        assert extract_model_ids(["a", "b"]) == ["a", "b"]
+
+    def test_lista_de_objetos(self):
+        assert extract_model_ids([{"id": "a"}, {"slug": "b"}]) == ["a", "b"]
+
+    def test_objeto_com_chaves_conhecidas(self):
+        assert extract_model_ids({"data": [{"model": "a"}]}) == ["a"]
+        assert extract_model_ids({"supported_models": ["x"]}) == ["x"]
+
+    def test_formato_inesperado_retorna_vazio(self):
+        assert extract_model_ids({"foo": 1}) == []
+        assert extract_model_ids(None) == []

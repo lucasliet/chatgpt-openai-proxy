@@ -26,6 +26,10 @@ SSE_TEXTO_RESPONSE = {
 }
 
 
+CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models"
+
+
+@respx.mock
 class TestHealthEModels:
     def test_health_publico(self, client):
         assert client.get("/health").json() == {"status": "ok"}
@@ -35,13 +39,33 @@ class TestHealthEModels:
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "missing_api_key"
 
-    def test_models_com_api_key(self, client, auth_headers):
+    def test_models_listagem_dinamica_do_backend(self, client, auth_headers):
+        route = respx.get(CODEX_MODELS_URL).mock(
+            return_value=Response(200, json={"models": ["gpt-5.5", "gpt-5.6-luna"]})
+        )
         response = client.get("/v1/models", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["object"] == "list"
         ids = [m["id"] for m in data["data"]]
+        assert ids == ["gpt-5.5", "gpt-5.6-luna"]
+        # A listagem usa a credencial DO USUÁRIO da API key.
+        assert route.calls.last.request.headers["Authorization"] == "Bearer at-acc-alice"
+
+    def test_models_falha_no_backend_cai_na_allowlist(self, client, auth_headers):
+        respx.get(CODEX_MODELS_URL).mock(return_value=Response(404, text="not found"))
+        response = client.get("/v1/models", headers=auth_headers)
+        assert response.status_code == 200
+        ids = [m["id"] for m in response.json()["data"]]
         assert "gpt-5.5" in ids
+
+    def test_models_lista_de_objetos(self, client, auth_headers):
+        respx.get(CODEX_MODELS_URL).mock(
+            return_value=Response(200, json={"data": [{"id": "gpt-x"}, {"id": "gpt-y"}]})
+        )
+        response = client.get("/v1/models", headers=auth_headers)
+        ids = [m["id"] for m in response.json()["data"]]
+        assert ids == ["gpt-x", "gpt-y"]
 
 
 class TestAdmin:
