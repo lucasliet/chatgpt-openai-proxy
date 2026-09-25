@@ -5,6 +5,7 @@ API key. Se o backend não suportar listagem (ou o usuário não tiver
 credencial válida), cai na allowlist estática de [app/allowlist.py].
 """
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -16,6 +17,8 @@ from ..config import get_settings
 from ..credentials import get_valid_user_credentials
 from ..database import get_session
 from ..deps import AuthContext, require_api_key
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -49,11 +52,14 @@ async def list_models(
         if credentials is not None:
             model_ids = await engine.list_models(credentials)
         else:
+            logger.info("/v1/models: usuário %s sem credencial; usando allowlist", auth.user.id)
             model_ids = []
-    except Exception:
+    except Exception as exc:
         # Listagem é conveniência: qualquer falha cai na allowlist estática.
+        logger.warning("/v1/models: listagem dinâmica falhou (%s); usando allowlist", exc)
         model_ids = []
     if model_ids:
+        logger.info("/v1/models: %d modelos do backend Codex", len(model_ids))
         return _format_model_list(model_ids)
 
     return list_allowed_models()
