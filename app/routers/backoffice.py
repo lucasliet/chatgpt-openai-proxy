@@ -29,6 +29,7 @@ from ..security import is_admin_key
 from . import admin as admin_api
 from .theme import (
     BASE_CSS,
+    HOLD_CONFIRM_SCRIPT,
     THEME_HEAD_SCRIPT,
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
@@ -304,9 +305,11 @@ def _key_row(key: ApiKey) -> str:
     else:
         status = '<span class="badge ok">ativa</span>'
         action = (
-            f'<form class="inline-form" method="post" action="/backoffice/keys/{key.id}/revoke"'
-            f" onsubmit=\"return confirm('Revogar a key {key.prefix}…?')\">"
-            f'<button class="btn small danger" type="submit">Revogar</button></form>'
+            f'<form class="inline-form" method="post" action="/backoffice/keys/{key.id}/revoke">'
+            f'<button class="btn small danger hold" type="button" data-hold-confirm'
+            f' aria-label="Segure 2 segundos para revogar a key {_esc(key.prefix)}">'
+            f'<span class="hold-fill" aria-hidden="true"></span>'
+            f'<span class="hold-label">Segure p/ revogar</span></button></form>'
         )
     return (
         f"<tr><td><code>{_esc(key.prefix)}…</code></td><td>{_esc(key.label) or '—'}</td>"
@@ -326,9 +329,12 @@ def _user_panel(user: User, keys: list[ApiKey]) -> str:
         <h3>#{user.id} · {_esc(user.name)}</h3>
         <a class="btn small ghost" href="/backoffice/users/{user.id}/usage">Ver consumo</a>
         <span>{_credential_badge(user)}
-          <form class="inline-form" method="post" action="/backoffice/users/{user.id}/delete"
-            onsubmit="return confirm('Remover o usuário #{user.id}, as credenciais OAuth e TODAS as keys?')">
-            <button class="btn small danger" type="submit">Excluir usuário</button>
+          <form class="inline-form" method="post" action="/backoffice/users/{user.id}/delete">
+            <button class="btn small danger hold" type="button" data-hold-confirm
+              aria-label="Segure 2 segundos para excluir o usuário #{user.id}, as credenciais OAuth e todas as keys">
+              <span class="hold-fill" aria-hidden="true"></span>
+              <span class="hold-label">Segure p/ excluir</span>
+            </button>
           </form>
         </span>
       </div>
@@ -411,5 +417,6 @@ def _render_dashboard(
     </footer>
   </div>
   {THEME_TOGGLE_SCRIPT}
+  {HOLD_CONFIRM_SCRIPT}
 </body>
 </html>"""

@@ -67,7 +67,9 @@ class TestBackofficeGuard:
     def test_acoes_de_escrita_tambem_exigem_cookie(self, client):
         # Given
         # When
-        response = client.post("/backoffice/users", data={"name": "mallory"}, follow_redirects=False)
+        response = client.post(
+            "/backoffice/users", data={"name": "mallory"}, follow_redirects=False
+        )
 
         # Then
         assert response.status_code == 303
@@ -123,6 +125,20 @@ class TestBackofficeAcoes:
         assert "notebook" in response.text
         assert "sk-" in response.text  # prefix mascarado da key
 
+    def test_acoes_destrutivas_exigem_hold_to_confirm(self, client):
+        # Given
+        user_id = create_user_with_credentials(client, "alice", account_id="acc-alice")
+        create_api_key(client, user_id, label="notebook")
+        _login(client)
+
+        # When
+        response = client.get("/backoffice")
+
+        # Then
+        assert response.text.count('type="button" data-hold-confirm') == 2
+        assert "setupHoldConfirm" in response.text
+        assert "confirm(" not in response.text
+
     def test_criar_usuario_pelo_form(self, client):
         # Given
         _login(client)
@@ -177,7 +193,10 @@ class TestBackofficeAcoes:
 
         # Then
         assert response.status_code == 303
-        assert client.get("/v1/models", headers={"Authorization": f"Bearer {raw_key}"}).status_code == 401
+        assert (
+            client.get("/v1/models", headers={"Authorization": f"Bearer {raw_key}"}).status_code
+            == 401
+        )
 
     def test_excluir_usuario_pelo_form(self, client, admin_headers):
         # Given

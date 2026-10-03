@@ -65,29 +65,7 @@ _PAGE_CSS = """
   font-size: 0.92rem;
   line-height: 1.5;
 }
-.status:not(.hidden) { animation: rise 220ms var(--ease-out); }
-.btn.hold {
-  position: relative;
-  overflow: hidden;
-  user-select: none;
-  touch-action: none;
-}
-.btn.hold .hold-fill {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.22);
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path 200ms var(--ease-out);
-  pointer-events: none;
-}
-.btn.hold.holding .hold-fill {
-  clip-path: inset(0 0 0 0);
-  transition: clip-path 2s linear;
-}
-.btn.hold .hold-label { position: relative; z-index: 1; }
-@media (prefers-reduced-motion: reduce) {
-  .btn.hold.holding .hold-fill { transition: clip-path 800ms linear !important; }
-}
+.status:not(.hidden) { animation: rise var(--dur-reveal) var(--ease-out); }
 """
 
 
@@ -141,7 +119,7 @@ def _render_logout_html() -> str:
         </button>
       </div>
       <p id="holdHint" class="muted" style="margin-top: 0.75rem; margin-bottom: 0; font-size: 0.85rem">
-        Solte antes dos 2s para cancelar. Em preferência de menos movimento, o hold é de 0,8s.
+        Solte antes dos 2s para cancelar.
       </p>
     </div>
 
@@ -157,8 +135,7 @@ def _render_logout_html() -> str:
     (function setupHoldToDelete() {
       const btn = document.getElementById('logoutBtn');
       const label = btn.querySelector('.hold-label');
-      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const holdMs = reduce ? 800 : 2000;
+      const holdMs = 2000;
       let timer = null;
       let busy = false;
 

@@ -190,14 +190,14 @@ def _parse_callback_url(raw: str) -> dict[str, str]:
 
 
 _PAGE_CSS = """
-.step { animation: rise 260ms var(--ease-out); }
+.step { animation: rise var(--dur-reveal) var(--ease-out); }
 .step.is-leaving { opacity: 0; transition: opacity 200ms var(--ease-out); }
 .step ol { margin: 0.5rem 0; padding-left: 1.4rem; }
 .step li { margin: 0.3rem 0; }
 .step .btn { margin: 0.5rem 0; word-break: break-all; font-size: 0.85rem; }
 .actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
-.keybox { animation: rise 260ms var(--ease-out); }
-.status:not(.hidden) { animation: rise 220ms var(--ease-out); }
+.keybox { animation: rise var(--dur-reveal) var(--ease-out); }
+.status:not(.hidden) { animation: rise var(--dur-reveal) var(--ease-out); }
 """
 
 

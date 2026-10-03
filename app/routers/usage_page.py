@@ -175,15 +175,15 @@ def render_usage(session: Session, user: User, days: int, admin: bool) -> str:
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Consumo — ChatGPT Proxy</title>{THEME_HEAD_SCRIPT}<style>{BASE_CSS}{USAGE_CSS}{THEME_TOGGLE_CSS}</style></head><body><div class="container">
     <header class="topbar"><a class="brand" href="/">chatgpt-openai-proxy</a><nav>{navigation}{THEME_TOGGLE_HTML}</nav></header>
-    <p class="eyebrow"><span class="tick">///</span> TELEMETRIA · {"BACKOFFICE" if admin else "MINHA CONTA"}</p>
-    <h1>Consumo de {html.escape(user.name)}</h1><p class="muted">{start:%d/%m/%Y %H:%M} → {now:%d/%m/%Y %H:%M} UTC · retenção de 30 dias</p>
+    <div class="rise" style="--d: 0"><p class="eyebrow"><span class="tick">///</span> TELEMETRIA · {"BACKOFFICE" if admin else "MINHA CONTA"}</p>
+    <h1>Consumo de {html.escape(user.name)}</h1><p class="muted">{start:%d/%m/%Y %H:%M} → {now:%d/%m/%Y %H:%M} UTC · retenção de 30 dias</p></div>
     <nav class="usage-filters" aria-label="Período">{filters}</nav>
-    <div class="usage-summary"><div class="panel"><p>Chamadas de IA</p><strong>{totals["calls"]:,}</strong></div>
+    <div class="usage-summary rise" style="--d: 1"><div class="panel"><p>Chamadas de IA</p><strong>{totals["calls"]:,}</strong></div>
     <div class="panel"><p>Tokens de entrada + saída</p><strong>{totals["input_tokens"] + totals["output_tokens"]:,}</strong></div>
     <div class="panel"><p>Custo equivalente de API</p><strong>{cost}</strong></div></div>
     <p class="muted">{totals["completed"]} concluídas · {totals["failed"]} falhas · {totals["interrupted"]} interrompidas</p>
-    <section class="panel"><h2>Tokens por modelo</h2>{usage_chart(buckets, start, end)}</section>
-    <section class="panel"><h2>Detalhamento</h2><div class="usage-table-wrap"><table class="usage-table"><thead><tr><th>Modelo executado</th><th>Chamadas</th><th>Entrada</th><th>Cache¹</th><th>Saída</th><th>Estimativa USD</th></tr></thead>
+    <section class="panel rise" style="--d: 2"><h2>Tokens por modelo</h2>{usage_chart(buckets, start, end)}</section>
+    <section class="panel rise" style="--d: 3"><h2>Detalhamento</h2><div class="usage-table-wrap"><table class="usage-table"><thead><tr><th>Modelo executado</th><th>Chamadas</th><th>Entrada</th><th>Cache¹</th><th>Saída</th><th>Estimativa USD</th></tr></thead>
     <tbody>{model_rows(buckets)}</tbody></table></div>
     <p class="muted">¹ Cache faz parte da entrada; não é somado novamente. Reasoning faz parte da saída.</p></section>
     <p class="muted">{unknown}</p><p class="muted">Preços OpenAI via models.dev, atualizados em {price_date}. Estimativa histórica calculada por chamada, não representa cobrança da assinatura ChatGPT.</p>

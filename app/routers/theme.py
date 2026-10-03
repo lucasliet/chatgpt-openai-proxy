@@ -38,6 +38,8 @@ BASE_CSS = """
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-page-enter: 380ms;
+  --dur-reveal: 240ms;
   --radius: 6px;
   color-scheme: light;
 }
@@ -94,10 +96,14 @@ body {
 .topbar .brand { color: var(--ink); text-decoration: none; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; }
 .topbar nav { display: flex; align-items: center; }
 .topbar nav a { color: var(--muted); text-decoration: none; margin-left: 1.1rem; transition: color 150ms ease-out; }
-.topbar nav a:hover { color: var(--link); }
+@media (hover: hover) and (pointer: fine) {
+  .topbar nav a:hover { color: var(--link); }
+}
 
 a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; transition: color 150ms ease-out; }
-a:hover { color: var(--link-hover); }
+@media (hover: hover) and (pointer: fine) {
+  a:hover { color: var(--link-hover); }
+}
 
 h1, h2, h3 { line-height: 1.15; letter-spacing: -0.01em; }
 
@@ -156,12 +162,18 @@ pre code { background: none; border: none; padding: 0; color: inherit; font-size
   text-decoration: none;
   transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, transform 120ms ease-out;
 }
-.btn:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
+}
 .btn:active { transform: scale(0.98); }
 .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-.btn.ghost:hover { background: transparent; border-color: var(--ink); color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .btn.ghost:hover { background: transparent; border-color: var(--ink); color: var(--ink); }
+}
 .btn.danger { background: var(--danger); border-color: var(--danger); }
-.btn.danger:hover { background: var(--danger-ink); border-color: var(--danger-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .btn.danger:hover { background: var(--danger-ink); border-color: var(--danger-ink); }
+}
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 input[type="text"], input[type="password"] {
@@ -209,7 +221,9 @@ label { display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--
   gap: 0.5rem;
 }
 .footer a { color: var(--muted); }
-.footer a:hover { color: var(--link); }
+@media (hover: hover) and (pointer: fine) {
+  .footer a:hover { color: var(--link); }
+}
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -217,13 +231,50 @@ label { display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-.rise { animation: rise 380ms var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.rise { animation: rise var(--dur-page-enter) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
+
+.btn.hold {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+.btn.hold .hold-fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.22);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 200ms var(--ease-out);
+  pointer-events: none;
+}
+.btn.hold.holding .hold-fill {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 2s linear;
+}
+.btn.hold .hold-label { position: relative; z-index: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: 120ms !important; }
-  .rise { animation-duration: 120ms; animation-delay: 0ms; }
+  .rise, .step, .keybox, .status:not(.hidden) {
+    animation-name: fade-in !important;
+    animation-duration: 120ms !important;
+    animation-delay: 0ms !important;
+  }
   .flow-line { animation: none !important; }
+  .btn.hold .hold-fill {
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
+    transition: opacity 200ms var(--ease-out) !important;
+  }
+  .btn.hold.holding .hold-fill {
+    opacity: 1;
+    transition: opacity 2s linear !important;
+  }
 }
 """
 
@@ -263,9 +314,7 @@ THEME_TOGGLE_CSS = """
   position: relative;
   transition: background 250ms ease-out, border-color 250ms ease-out, transform 120ms ease-out;
 }
-@media (hover: hover) and (pointer: fine) {
-  .theme-toggle:active .track { transform: scale(0.97); }
-}
+.theme-toggle:active .track { transform: scale(0.97); }
 .theme-toggle .thumb {
   position: absolute;
   top: 2px;
@@ -308,6 +357,42 @@ THEME_TOGGLE_SCRIPT = """<script>
       document.documentElement.dataset.theme = next;
       toggle.setAttribute('aria-pressed', next === 'dark');
       try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+"""
+
+HOLD_CONFIRM_SCRIPT = """<script>
+  (function setupHoldConfirm() {
+    const HOLD_MS = 2000;
+    document.querySelectorAll('button[data-hold-confirm]').forEach(function (btn) {
+      let timer = null;
+      function cancel() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        btn.classList.remove('holding');
+      }
+      function start(e) {
+        if (btn.disabled || timer) return;
+        if (e.type === 'pointerdown' && e.button !== 0) return;
+        if (e.cancelable) e.preventDefault();
+        btn.classList.add('holding');
+        timer = setTimeout(function () {
+          timer = null;
+          btn.disabled = true;
+          btn.form.submit();
+        }, HOLD_MS);
+      }
+      btn.addEventListener('pointerdown', start);
+      btn.addEventListener('pointerup', cancel);
+      btn.addEventListener('pointerleave', cancel);
+      btn.addEventListener('pointercancel', cancel);
+      btn.addEventListener('keydown', function (e) {
+        if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) start(e);
+      });
+      btn.addEventListener('keyup', function (e) {
+        if (e.key === ' ' || e.key === 'Enter') cancel();
+      });
+      btn.addEventListener('blur', cancel);
     });
   })();
 </script>

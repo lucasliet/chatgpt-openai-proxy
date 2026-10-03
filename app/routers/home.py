@@ -52,6 +52,7 @@ _PAGE_CSS = """
   animation: march 1.1s linear infinite;
 }
 @keyframes march { to { stroke-dashoffset: -12; } }
+.diagram.is-offscreen .flow-line { animation-play-state: paused; }
 
 .index {
   display: flex;
@@ -65,7 +66,9 @@ _PAGE_CSS = """
   margin: 2.5rem 0 1.5rem;
 }
 .index a { color: var(--muted); text-decoration: none; }
-.index a:hover { color: var(--link); }
+@media (hover: hover) and (pointer: fine) {
+  .index a:hover { color: var(--link); }
+}
 .index .n { color: var(--link); margin-right: 0.35em; }
 
 section[id] { scroll-margin-top: 1.5rem; }
@@ -320,6 +323,15 @@ def _render_home_html() -> str:
       <span><a href="/health">/health</a> · <a href="/login">/login</a> · <a href="/logout">/logout</a> · <a href="https://github.com/lucasliet/chatgpt-openai-proxy/issues" target="_blank" rel="noopener">suporte</a></span>
     </footer>
   </div>
+  <script>
+    (function pauseDiagramOffscreen() {
+      const diagram = document.querySelector('.diagram');
+      if (!diagram || !('IntersectionObserver' in window)) return;
+      new IntersectionObserver(function (entries) {
+        diagram.classList.toggle('is-offscreen', !entries[0].isIntersecting);
+      }).observe(diagram);
+    })();
+  </script>
   """
         + THEME_TOGGLE_SCRIPT
         + """</body>
