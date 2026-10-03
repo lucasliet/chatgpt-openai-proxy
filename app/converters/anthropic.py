@@ -8,7 +8,6 @@ eventos ``message_start`` / ``content_block_*`` / ``message_delta`` /
 """
 
 import json
-import time
 import uuid
 from collections.abc import AsyncIterable, AsyncIterator
 from typing import Any
@@ -123,9 +122,7 @@ def anthropic_to_chat(request: dict[str, Any]) -> dict[str, Any]:
     return chat
 
 
-def chat_to_anthropic(
-    chat_response: dict[str, Any], model: str | None = None
-) -> dict[str, Any]:
+def chat_to_anthropic(chat_response: dict[str, Any], model: str | None = None) -> dict[str, Any]:
     """Converte um ChatCompletionResponse em Anthropic Messages response."""
     choice = chat_response.get("choices", [{}])[0]
     message = choice.get("message", {})
@@ -174,7 +171,6 @@ async def chat_chunks_to_anthropic_events(
     Yields tuplas ``(event_type, data)``; quem formata o frame SSE é a rota.
     """
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
-    created = int(time.time())
 
     yield (
         "message_start",
@@ -228,9 +224,7 @@ async def chat_chunks_to_anthropic_events(
                 index = tool_delta.get("index", 0)
                 known = tool_block_ids.setdefault(index, {"id": "", "name": ""})
                 known["id"] = tool_delta.get("id") or known["id"]
-                known["name"] = (
-                    tool_delta.get("function", {}).get("name") or known["name"]
-                )
+                known["name"] = tool_delta.get("function", {}).get("name") or known["name"]
                 partial_json = tool_delta.get("function", {}).get("arguments", "")
 
                 is_new_block = (
@@ -307,18 +301,14 @@ async def chat_chunks_to_anthropic_events(
 
 def format_anthropic_sse(event_type: str, data: dict[str, Any]) -> bytes:
     """Serializa um evento Anthropic no formato SSE com linha ``event:``."""
-    return (
-        f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-    ).encode("utf-8")
+    return (f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n").encode()
 
 
 def _anthropic_text(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(
-            block.get("text", "") for block in content if block.get("type") == "text"
-        )
+        return "".join(block.get("text", "") for block in content if block.get("type") == "text")
     return ""
 
 

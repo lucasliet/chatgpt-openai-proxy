@@ -40,7 +40,9 @@ class UpstreamError(Exception):
 class Engine(Protocol):
     name: str
 
-    async def responses(self, credentials: Credentials, payload: dict[str, Any]) -> dict[str, Any]: ...
+    async def responses(
+        self, credentials: Credentials, payload: dict[str, Any]
+    ) -> dict[str, Any]: ...
 
     def responses_stream(
         self, credentials: Credentials, payload: dict[str, Any]
@@ -172,7 +174,11 @@ class LiteLLMEngine:
             return event.dict()
         import json
 
-        return json.loads(event.model_dump_json()) if hasattr(event, "model_dump_json") else dict(event)
+        return (
+            json.loads(event.model_dump_json())
+            if hasattr(event, "model_dump_json")
+            else dict(event)
+        )
 
     async def responses(self, credentials: Credentials, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -229,4 +235,6 @@ def build_engine(settings: Settings) -> Engine:
         return HttpxEngine(settings)
     if name == "litellm":
         return LiteLLMEngine(settings)
-    raise ValueError(f"UPSTREAM_ENGINE inválido: {settings.upstream_engine!r} (use litellm ou httpx)")
+    raise ValueError(
+        f"UPSTREAM_ENGINE inválido: {settings.upstream_engine!r} (use litellm ou httpx)"
+    )

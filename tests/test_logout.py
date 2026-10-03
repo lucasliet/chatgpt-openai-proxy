@@ -1,10 +1,10 @@
 """Testes do fluxo de logout / exclusão de conta (prefixo /logout)."""
 
+from conftest import create_api_key, create_user_with_credentials
 from sqlmodel import Session, select
 
 from app.database import get_engine
 from app.models import ApiKey, User
-from conftest import create_api_key, create_user_with_credentials
 
 
 class TestLogoutPage:

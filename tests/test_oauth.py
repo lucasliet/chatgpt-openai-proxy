@@ -12,21 +12,19 @@ from app.config import get_settings
 from app.oauth import (
     build_auth_url,
     code_challenge,
+    exchange_code_for_tokens,
     extract_account_id,
     generate_code_verifier,
     generate_state,
     parse_jwt_claims,
     refresh_access_token,
-    exchange_code_for_tokens,
     token_to_credentials,
 )
 
 
 def _jwt(payload: dict) -> str:
     def encode(obj: dict) -> str:
-        return (
-            base64.urlsafe_b64encode(json.dumps(obj).encode()).rstrip(b"=").decode()
-        )
+        return base64.urlsafe_b64encode(json.dumps(obj).encode()).rstrip(b"=").decode()
 
     return f"{encode({'alg': 'none'})}.{encode(payload)}."
 
@@ -35,7 +33,10 @@ class TestPkce:
     def test_verifier_charset_e_tamanho(self):
         verifier = generate_code_verifier()
         assert len(verifier) == 64
-        assert all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~" for c in verifier)
+        assert all(
+            c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+            for c in verifier
+        )
 
     def test_state_tem_32_chars(self):
         assert len(generate_state()) == 32
@@ -75,7 +76,10 @@ class TestAuthUrl:
         assert "codex_cli_simplified_flow=true" in url
         assert "originator=codex_cli_rs" in url
         assert "state=state-y" in url
-        assert f"redirect_uri=http%3A%2F%2Flocalhost%3A{settings.oauth_callback_port}%2Fauth%2Fcallback" in url
+        assert (
+            f"redirect_uri=http%3A%2F%2Flocalhost%3A{settings.oauth_callback_port}%2Fauth%2Fcallback"
+            in url
+        )
 
 
 class TestTokenRequests:
@@ -83,7 +87,9 @@ class TestTokenRequests:
     async def test_exchange_code_envia_pkce(self):
         settings = get_settings()
         route = respx.post(settings.oauth_token_url).mock(
-            return_value=Response(200, json={"access_token": "at", "refresh_token": "rt", "expires_in": 3600})
+            return_value=Response(
+                200, json={"access_token": "at", "refresh_token": "rt", "expires_in": 3600}
+            )
         )
         token = await exchange_code_for_tokens(settings, "code-1", "verifier-1")
         assert token["access_token"] == "at"

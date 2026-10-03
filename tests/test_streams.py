@@ -22,9 +22,7 @@ class TestIterSseEvents:
             {"type": "a", "n": 1},
             {"type": "b", "n": 2},
         ]
-        payload = "".join(
-            f"data: {json.dumps(e)}\n\n" for e in events
-        ).encode()
+        payload = "".join(f"data: {json.dumps(e)}\n\n" for e in events).encode()
         # Tudo em um único chunk.
         result = [e async for e in iter_sse_events(_byte_source(payload))]
         assert result == events
@@ -32,15 +30,12 @@ class TestIterSseEvents:
     async def test_frames_divididos_entre_chunks(self):
         frame = b'data: {"type": "x"}\n\n'
         result = [
-            e
-            async for e in iter_sse_events(
-                _byte_source(frame[:7], frame[7:15], frame[15:])
-            )
+            e async for e in iter_sse_events(_byte_source(frame[:7], frame[7:15], frame[15:]))
         ]
         assert result == [{"type": "x"}]
 
     async def test_done_e_frames_invalidos_sao_ignorados(self):
-        payload = b'data: [DONE]\n\ndata: nao-json\n\n: comentario\n\n'
+        payload = b"data: [DONE]\n\ndata: nao-json\n\n: comentario\n\n"
         result = [e async for e in iter_sse_events(_byte_source(payload))]
         assert result == []
 
@@ -52,8 +47,18 @@ class TestResponsesEventsToChatChunks:
 
     async def test_stream_texto_completo(self):
         events = [
-            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": "Olá"},
-            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": "!"},
+            {
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": "Olá",
+            },
+            {
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": "!",
+            },
             {
                 "type": "response.completed",
                 "response": {
@@ -64,12 +69,7 @@ class TestResponsesEventsToChatChunks:
                 },
             },
         ]
-        chunks = [
-            c
-            async for c in responses_events_to_chat_chunks(
-                self._events(events), "gpt-5.5"
-            )
-        ]
+        chunks = [c async for c in responses_events_to_chat_chunks(self._events(events), "gpt-5.5")]
 
         assert chunks[0]["object"] == "chat.completion.chunk"
         assert chunks[0]["choices"][0]["delta"] == {"role": "assistant"}
@@ -110,7 +110,7 @@ class TestResponsesEventsToChatChunks:
                 "item_id": "fc_1",
                 "call_id": "call_1",
                 "name": "buscar",
-                "delta": ': 1}',
+                "delta": ": 1}",
             },
             {
                 "type": "response.completed",
@@ -122,12 +122,7 @@ class TestResponsesEventsToChatChunks:
                 },
             },
         ]
-        chunks = [
-            c
-            async for c in responses_events_to_chat_chunks(
-                self._events(events), "gpt-5.5"
-            )
-        ]
+        chunks = [c async for c in responses_events_to_chat_chunks(self._events(events), "gpt-5.5")]
 
         added = chunks[1]
         assert added["choices"][0]["delta"]["tool_calls"] == [
@@ -140,28 +135,39 @@ class TestResponsesEventsToChatChunks:
         ]
 
         deltas = [
-            c["choices"][0]["delta"]["tool_calls"][0]["function"]["arguments"]
-            for c in chunks[2:4]
+            c["choices"][0]["delta"]["tool_calls"][0]["function"]["arguments"] for c in chunks[2:4]
         ]
-        assert deltas == ['{"q"', ': 1}']
+        assert deltas == ['{"q"', ": 1}"]
 
         final = chunks[4]
         assert final["choices"][0]["finish_reason"] == "tool_calls"
 
     async def test_para_no_response_completed(self):
         events = [
-            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": "x"},
+            {
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": "x",
+            },
             {
                 "type": "response.completed",
-                "response": {"id": "r", "model": "m", "output": [], "usage": {"input_tokens": 1, "output_tokens": 1}},
+                "response": {
+                    "id": "r",
+                    "model": "m",
+                    "output": [],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
             },
             # Evento extra após completed não deve ser processado.
-            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": "y"},
+            {
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": "y",
+            },
         ]
-        chunks = [
-            c
-            async for c in responses_events_to_chat_chunks(self._events(events), "m")
-        ]
+        chunks = [c async for c in responses_events_to_chat_chunks(self._events(events), "m")]
         textos = [
             c["choices"][0]["delta"].get("content")
             for c in chunks

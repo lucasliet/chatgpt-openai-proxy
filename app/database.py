@@ -12,7 +12,7 @@ from collections.abc import Generator
 
 from sqlalchemy import BIGINT, event, inspect, text
 from sqlalchemy.engine import Engine
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
 from .config import get_settings, resolved_database_url
 
@@ -95,9 +95,7 @@ def _run_column_migrations(engine: Engine) -> None:
         return
     existing = {column["name"] for column in inspector.get_columns("proxy_user")}
     pending = [
-        statement
-        for column, statement in _USER_COLUMN_MIGRATIONS.items()
-        if column not in existing
+        statement for column, statement in _USER_COLUMN_MIGRATIONS.items() if column not in existing
     ]
     if not pending:
         return

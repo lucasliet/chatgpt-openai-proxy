@@ -61,7 +61,12 @@ class TestChatToResponses:
             }
         )
         assert payload["tools"] == [
-            {"type": "function", "name": "buscar", "description": "Busca", "parameters": {"type": "object"}}
+            {
+                "type": "function",
+                "name": "buscar",
+                "description": "Busca",
+                "parameters": {"type": "object"},
+            }
         ]
 
     def test_tool_choice_function(self):

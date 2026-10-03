@@ -3,6 +3,7 @@
 import time
 
 import respx
+from conftest import create_api_key, create_user_with_credentials
 from httpx import Response
 from sqlmodel import Session
 
@@ -15,8 +16,6 @@ from app.credentials import (
 from app.database import get_engine
 from app.models import User
 from app.oauth import Credentials
-
-from conftest import create_api_key, create_user_with_credentials
 
 
 def _db_session() -> Session:
@@ -39,7 +38,9 @@ def _get_user(user_id: int) -> User:
 
 class TestCredentialsFromUser:
     def test_sem_access_token_retorna_none(self, client):
-        created = client.post("/admin/users", json={"name": "vazio"}, headers={"X-Admin-Key": "sk-admin-test"})
+        created = client.post(
+            "/admin/users", json={"name": "vazio"}, headers={"X-Admin-Key": "sk-admin-test"}
+        )
         user = _get_user(created.json()["id"])
         assert credentials_from_user(user) is None
 
@@ -53,7 +54,9 @@ class TestCredentialsFromUser:
 
 class TestSaveOauthCredentials:
     def test_persiste_tokens_e_last_login(self, client):
-        created = client.post("/admin/users", json={"name": "novo"}, headers={"X-Admin-Key": "sk-admin-test"})
+        created = client.post(
+            "/admin/users", json={"name": "novo"}, headers={"X-Admin-Key": "sk-admin-test"}
+        )
         user_id = created.json()["id"]
         with _db_session() as session:
             user = session.get(User, user_id)
@@ -141,7 +144,9 @@ class TestRefreshIsoladoPorUsuario:
 
 class TestApiKeySemCredencial:
     def test_key_de_usuario_sem_oauth_recebe_401(self, client):
-        created = client.post("/admin/users", json={"name": "sem-oauth"}, headers={"X-Admin-Key": "sk-admin-test"})
+        created = client.post(
+            "/admin/users", json={"name": "sem-oauth"}, headers={"X-Admin-Key": "sk-admin-test"}
+        )
         key = create_api_key(client, created.json()["id"])
 
         response = client.post(
@@ -154,7 +159,9 @@ class TestApiKeySemCredencial:
 
     def test_listagem_admin_mostra_status_da_credencial(self, client):
         create_user_with_credentials(client, "com-oauth", account_id="acc-conta-123")
-        client.post("/admin/users", json={"name": "sem-oauth"}, headers={"X-Admin-Key": "sk-admin-test"})
+        client.post(
+            "/admin/users", json={"name": "sem-oauth"}, headers={"X-Admin-Key": "sk-admin-test"}
+        )
 
         users = client.get("/admin/users", headers={"X-Admin-Key": "sk-admin-test"}).json()["users"]
         by_name = {u["name"]: u for u in users}

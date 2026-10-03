@@ -21,7 +21,7 @@ usuário autentica a assinatura ChatGPT via OAuth e recebe a API key na hora.
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -105,7 +105,9 @@ def list_users(session: Annotated[Session, Depends(get_session)]):
 def create_user(payload: UserCreate, session: Annotated[Session, Depends(get_session)]):
     existing = session.exec(select(User).where(User.name == payload.name)).first()
     if existing:
-        raise HTTPException(status_code=409, detail={"error": {"message": "Usuário já existe.", "type": "conflict"}})
+        raise HTTPException(
+            status_code=409, detail={"error": {"message": "Usuário já existe.", "type": "conflict"}}
+        )
 
     user = User(name=payload.name)
     session.add(user)
@@ -118,7 +120,10 @@ def create_user(payload: UserCreate, session: Annotated[Session, Depends(get_ses
 def delete_user(user_id: int, session: Annotated[Session, Depends(get_session)]):
     user = session.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=404, detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}},
+        )
 
     for key in session.exec(select(ApiKey).where(ApiKey.user_id == user_id)).all():
         session.delete(key)
@@ -131,7 +136,10 @@ def delete_user(user_id: int, session: Annotated[Session, Depends(get_session)])
 def list_user_keys(user_id: int, session: Annotated[Session, Depends(get_session)]):
     user = session.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=404, detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}},
+        )
 
     keys = session.exec(select(ApiKey).where(ApiKey.user_id == user_id)).all()
     return {"user_id": user_id, "keys": [_key_json(key) for key in keys]}
@@ -143,7 +151,10 @@ def create_user_key(
 ):
     user = session.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=404, detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"message": "Usuário não encontrado.", "type": "not_found"}},
+        )
 
     raw_key = generate_api_key()
     api_key = ApiKey(
@@ -168,9 +179,12 @@ def create_user_key(
 def revoke_key(key_id: int, session: Annotated[Session, Depends(get_session)]):
     api_key = session.get(ApiKey, key_id)
     if api_key is None:
-        raise HTTPException(status_code=404, detail={"error": {"message": "Key não encontrada.", "type": "not_found"}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"message": "Key não encontrada.", "type": "not_found"}},
+        )
 
-    api_key.revoked_at = api_key.revoked_at or datetime.now(timezone.utc)
+    api_key.revoked_at = api_key.revoked_at or datetime.now(UTC)
     session.add(api_key)
     session.commit()
     return {"id": api_key.id, "revoked_at": api_key.revoked_at.isoformat()}

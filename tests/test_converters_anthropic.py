@@ -129,7 +129,11 @@ class TestAnthropicToChat:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "resultado"}
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_1",
+                                "content": "resultado",
+                            }
                         ],
                     }
                 ],
@@ -169,9 +173,7 @@ class TestChatToAnthropic:
             "id": "chatcmpl-1",
             "object": "chat.completion",
             "model": "gpt-5.5",
-            "choices": [
-                {"index": 0, "message": message, "finish_reason": finish_reason}
-            ],
+            "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
             "usage": usage or {"prompt_tokens": 5, "completion_tokens": 6},
         }
 
@@ -224,16 +226,8 @@ class TestAnthropicStreamEvents:
             "model": "claude-sonnet-4-5",
             "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
         }
-        yield {
-            "choices": [
-                {"index": 0, "delta": {"content": "Olá"}, "finish_reason": None}
-            ]
-        }
-        yield {
-            "choices": [
-                {"index": 0, "delta": {"content": " mundo"}, "finish_reason": None}
-            ]
-        }
+        yield {"choices": [{"index": 0, "delta": {"content": "Olá"}, "finish_reason": None}]}
+        yield {"choices": [{"index": 0, "delta": {"content": " mundo"}, "finish_reason": None}]}
         yield {
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 2},
@@ -293,11 +287,7 @@ class TestAnthropicStreamEvents:
                 "choices": [
                     {
                         "index": 0,
-                        "delta": {
-                            "tool_calls": [
-                                {"index": 0, "function": {"arguments": '{"q"'}}
-                            ]
-                        },
+                        "delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"q"'}}]},
                         "finish_reason": None,
                     }
                 ]
@@ -306,11 +296,7 @@ class TestAnthropicStreamEvents:
                 "choices": [
                     {
                         "index": 0,
-                        "delta": {
-                            "tool_calls": [
-                                {"index": 0, "function": {"arguments": ': 1}'}}
-                            ]
-                        },
+                        "delta": {"tool_calls": [{"index": 0, "function": {"arguments": ": 1}"}}]},
                         "finish_reason": None,
                     }
                 ]
@@ -320,19 +306,12 @@ class TestAnthropicStreamEvents:
                 "usage": {"prompt_tokens": 9, "completion_tokens": 4},
             }
 
-        events = [
-            (t, d)
-            async for t, d in chat_chunks_to_anthropic_events(chunks(), "m")
-        ]
+        events = [(t, d) async for t, d in chat_chunks_to_anthropic_events(chunks(), "m")]
         block_start = next(d for t, d in events if t == "content_block_start")
         assert block_start["content_block"]["type"] == "tool_use"
         assert block_start["content_block"]["name"] == "buscar"
 
-        json_deltas = [
-            d["delta"]["partial_json"]
-            for t, d in events
-            if t == "content_block_delta"
-        ]
+        json_deltas = [d["delta"]["partial_json"] for t, d in events if t == "content_block_delta"]
         assert "".join(json_deltas) == '{"q": 1}'
 
         message_delta = [d for t, d in events if t == "message_delta"][0]

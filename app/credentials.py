@@ -57,9 +57,7 @@ def persist_credentials(session: Session, user: User, credentials: Credentials) 
     session.commit()
 
 
-def save_oauth_credentials(
-    session: Session, user: User, credentials: Credentials
-) -> None:
+def save_oauth_credentials(session: Session, user: User, credentials: Credentials) -> None:
     """Persiste o resultado de um login OAuth para o usuário."""
     persist_credentials(session, user, credentials)
     user.last_login_at = utcnow()

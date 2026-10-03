@@ -21,7 +21,7 @@ def format_sse(data: Any) -> bytes:
         payload = data
     else:
         payload = json.dumps(data, ensure_ascii=False)
-    return f"data: {payload}\n\n".encode("utf-8")
+    return f"data: {payload}\n\n".encode()
 
 
 async def iter_sse_events(chunks: AsyncIterable[bytes]) -> AsyncIterator[dict[str, Any]]:
@@ -229,9 +229,7 @@ def _build_chunk(
         "object": "chat.completion.chunk",
         "created": created,
         "model": model,
-        "choices": [
-            {"index": 0, "delta": delta_payload, "finish_reason": finish_reason}
-        ],
+        "choices": [{"index": 0, "delta": delta_payload, "finish_reason": finish_reason}],
     }
 
 

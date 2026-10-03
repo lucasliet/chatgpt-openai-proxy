@@ -8,6 +8,7 @@ antigas, e que a chave errada falha com mensagem acionável.
 import base64
 
 import pytest
+from conftest import create_user_with_credentials
 from sqlalchemy import text
 from sqlmodel import Session, select
 
@@ -15,7 +16,6 @@ from app import crypto
 from app.config import get_settings
 from app.database import get_engine, init_db
 from app.models import User
-from conftest import create_user_with_credentials
 
 # Segunda chave Fernet válida, diferente da usada no conftest.
 OTHER_KEY = base64.urlsafe_b64encode(b"\x02" * 32).decode()
@@ -124,5 +124,8 @@ class TestTokenEncryption:
         _reload_settings(OTHER_KEY)
 
         # Then: a leitura falha com erro acionável (nunca devolve lixo)
-        with Session(get_engine()) as session, pytest.raises(RuntimeError, match="TOKEN_ENCRYPTION_KEY"):
+        with (
+            Session(get_engine()) as session,
+            pytest.raises(RuntimeError, match="TOKEN_ENCRYPTION_KEY"),
+        ):
             session.exec(select(User)).all()

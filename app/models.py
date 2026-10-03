@@ -11,7 +11,7 @@ Os tokens são cifrados em repouso (Fernet) pela coluna ``EncryptedText`` de
 ``TOKEN_ENCRYPTION_KEY`` ou do keyfile ``token.key`` no proxy home.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import BigInteger, Column
 from sqlmodel import Field, SQLModel
@@ -20,7 +20,7 @@ from .crypto import EncryptedText
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class User(SQLModel, table=True):

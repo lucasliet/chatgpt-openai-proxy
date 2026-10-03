@@ -14,16 +14,10 @@ def test_expires_at_e_bigint_no_modelo():
 
 class TestNormalizeUrl:
     def test_postgres_antigo(self):
-        assert (
-            _normalize_url("postgres://u:p@host/db")
-            == "postgresql+psycopg://u:p@host/db"
-        )
+        assert _normalize_url("postgres://u:p@host/db") == "postgresql+psycopg://u:p@host/db"
 
     def test_postgresql_sem_driver(self):
-        assert (
-            _normalize_url("postgresql://u:p@host/db")
-            == "postgresql+psycopg://u:p@host/db"
-        )
+        assert _normalize_url("postgresql://u:p@host/db") == "postgresql+psycopg://u:p@host/db"
 
     def test_com_driver_explicito_preserve(self):
         url = "postgresql+psycopg://u:p@host/db"

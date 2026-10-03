@@ -86,7 +86,9 @@ class TestHttpxEngine:
         respx.post(CODEX_URL).mock(
             return_value=Response(200, content=sse, headers={"Content-Type": "text/event-stream"})
         )
-        events = [e async for e in engine.responses_stream(_creds(), {"model": "m", "stream": True})]
+        events = [
+            e async for e in engine.responses_stream(_creds(), {"model": "m", "stream": True})
+        ]
         types = [e["type"] for e in events]
         assert types == ["response.output_text.delta", "response.completed"]
 

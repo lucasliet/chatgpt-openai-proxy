@@ -88,9 +88,7 @@ def build_auth_url(settings: Settings, verifier: str, state: str) -> str:
     return f"{settings.oauth_auth_url}?{urlencode(params)}"
 
 
-async def exchange_code_for_tokens(
-    settings: Settings, code: str, verifier: str
-) -> dict[str, Any]:
+async def exchange_code_for_tokens(settings: Settings, code: str, verifier: str) -> dict[str, Any]:
     """Troca o authorization code por tokens (PKCE)."""
     body = {
         "grant_type": "authorization_code",
@@ -120,9 +118,7 @@ async def _post_token_request(settings: Settings, body: dict[str, str]) -> dict[
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
     if response.status_code >= 400:
-        raise RuntimeError(
-            f"Token request failed ({response.status_code}): {response.text}"
-        )
+        raise RuntimeError(f"Token request failed ({response.status_code}): {response.text}")
     return response.json()
 
 

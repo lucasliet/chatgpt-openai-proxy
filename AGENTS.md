@@ -7,6 +7,7 @@
 - Servidor local: `uv run fastapi dev` (reload). Produção: `uv run uvicorn app.main:app --host 0.0.0.0 --port 3000`.
 - Verificação completa local/CI: `uv run pytest`.
 - CI usa `uv sync --frozen` -> `uv run pytest` em `.github/workflows/ci.yml`.
+- Lint/format: `uv run ruff check app tests` e `uv run ruff format app tests` (config em `[tool.ruff]` no `pyproject.toml`, line-length 100; CI roda `check` e `format --check` antes dos testes).
 - Teste focado: `uv run pytest tests/test_api.py::TestLoginFlow`.
 
 ## Modelo de autenticação (não quebrar)

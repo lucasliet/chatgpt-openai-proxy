@@ -20,7 +20,11 @@ SSE_TEXTO_RESPONSE = {
     "object": "response",
     "model": "gpt-6-terra",
     "output": [
-        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Olá"}]}
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Olá"}],
+        }
     ],
     "usage": {"input_tokens": 10, "output_tokens": 5},
 }
@@ -81,14 +85,19 @@ class TestAdmin:
         duplicado = client.post("/admin/users", json={"name": "bob"}, headers=admin_headers)
         assert duplicado.status_code == 409
 
-        key = client.post(f"/admin/users/{user_id}/keys", json={"label": "cli"}, headers=admin_headers)
+        key = client.post(
+            f"/admin/users/{user_id}/keys", json={"label": "cli"}, headers=admin_headers
+        )
         assert key.status_code == 201
         full_key = key.json()["key"]
         assert full_key.startswith("sk-")
         assert key.json()["prefix"] == full_key[:12]
 
         # A key funciona como Bearer.
-        assert client.get("/v1/models", headers={"Authorization": f"Bearer {full_key}"}).status_code == 200
+        assert (
+            client.get("/v1/models", headers={"Authorization": f"Bearer {full_key}"}).status_code
+            == 200
+        )
 
         # Revogação invalida imediatamente.
         key_id = key.json()["id"]
@@ -108,7 +117,9 @@ class TestAdmin:
 class TestResponsesEndpoint:
     def test_passthrough_json(self, client, auth_headers):
         route = respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/responses",
@@ -128,7 +139,9 @@ class TestResponsesEndpoint:
 
     def test_passthrough_stream(self, client, auth_headers):
         respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/responses",
@@ -153,7 +166,9 @@ class TestResponsesEndpoint:
 
     def test_input_string_e_normalizado_para_lista(self, client, auth_headers):
         route = respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/responses",
@@ -175,7 +190,9 @@ class TestResponsesEndpoint:
 class TestChatCompletionsEndpoint:
     def test_nao_streaming(self, client, auth_headers):
         route = respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/chat/completions",
@@ -204,12 +221,18 @@ class TestChatCompletionsEndpoint:
 
     def test_streaming(self, client, auth_headers):
         respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/chat/completions",
             headers=auth_headers,
-            json={"model": "gpt-6-terra", "messages": [{"role": "user", "content": "oi"}], "stream": True},
+            json={
+                "model": "gpt-6-terra",
+                "messages": [{"role": "user", "content": "oi"}],
+                "stream": True,
+            },
         )
         assert response.status_code == 200
         frames = [f for f in response.text.split("data: ") if f.strip()]
@@ -227,7 +250,9 @@ class TestChatCompletionsEndpoint:
 class TestAnthropicEndpoint:
     def test_nao_streaming(self, client, auth_headers):
         route = respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/messages",
@@ -259,7 +284,9 @@ class TestAnthropicEndpoint:
 
     def test_streaming(self, client, auth_headers):
         respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/messages",
@@ -334,7 +361,9 @@ class TestLoginFlow:
         # A key gerada no login funciona nas rotas protegidas e usa a
         # credencial OAuth da conta que acabou de logar.
         route = respx.post(CODEX_URL).mock(
-            return_value=Response(200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"})
+            return_value=Response(
+                200, content=SSE_TEXTO, headers={"Content-Type": "text/event-stream"}
+            )
         )
         response = client.post(
             "/v1/chat/completions",
