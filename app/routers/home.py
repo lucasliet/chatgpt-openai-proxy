@@ -184,13 +184,6 @@ def _render_home_html() -> str:
         (identificada pelo <code>account_id</code>) <strong>revoga todas as API keys
         antigas</strong> e emite uma nova. Re-login nunca duplica usuário.
       </p>
-      <p>
-        Para administração extra existem os endpoints <code>/admin</code> (autenticados
-        pelo header <code>X-Admin-Key</code>): listar usuários, criar/revogar keys e
-        remover usuários manualmente. O operador também tem uma interface web em
-        <a href="/backoffice">/backoffice</a> — login em <a href="/admin-login">/admin-login</a>
-        com a mesma <code>ADMIN_API_KEY</code>.
-      </p>
     </section>
 
     <section class="panel rise" style="--d: 6" id="endpoints">
@@ -281,7 +274,7 @@ def _render_home_html() -> str:
       <p><strong>Retenção:</strong></p>
       <ul>
         <li>Os dados ficam no banco <strong>enquanto a conta existir</strong> — não há expiração automática.</li>
-        <li>A exclusão é imediata, completa e irreversível via <a href="/logout">/logout</a> (self-service) ou pelo operador via <code>DELETE /admin/users/{id}</code>.</li>
+        <li>A exclusão é imediata, completa e irreversível via <a href="/logout">/logout</a> (self-service) ou pelo operador do serviço.</li>
         <li>Em caso de vazamento do banco, tokens e keys são inúteis: os tokens exigem a chave Fernet (que fica fora do banco, em env/keyfile) e as keys só existem como hash irreversível.</li>
       </ul>
       <p>
@@ -316,7 +309,7 @@ def _render_home_html() -> str:
 
     <footer class="footer">
       <span>chatgpt-openai-proxy · FastAPI</span>
-      <span><a href="/health">/health</a> · <a href="/login">/login</a> · <a href="/logout">/logout</a> · <a href="/backoffice">/backoffice</a> · <a href="https://github.com/lucasliet/chatgpt-openai-proxy/issues" target="_blank" rel="noopener">suporte</a></span>
+      <span><a href="/health">/health</a> · <a href="/login">/login</a> · <a href="/logout">/logout</a> · <a href="https://github.com/lucasliet/chatgpt-openai-proxy/issues" target="_blank" rel="noopener">suporte</a></span>
     </footer>
   </div>
   """
