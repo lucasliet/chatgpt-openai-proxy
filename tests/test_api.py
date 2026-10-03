@@ -255,7 +255,7 @@ class TestAnthropicEndpoint:
 
         # Upstream recebeu o default_model (claude-* não está na allowlist).
         sent = json.loads(route.calls.last.request.content)
-        assert sent["model"] == "gpt-6-luna"
+        assert sent["model"] == "gpt-6.1-sol"
         assert sent["instructions"] == "Seja breve."
 
     def test_streaming(self, client, auth_headers):

@@ -195,19 +195,19 @@ def _render_home_html() -> str:
       <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/chat/completions \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"model": "gpt-6-terra", "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
+  -d '{"model": "gpt-6.1-sol", "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
 
       <p><strong>Responses API (OpenAI):</strong></p>
       <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/responses \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"model": "gpt-6-terra", "input": "Olá!"}'</code></pre>
+  -d '{"model": "gpt-6.1-sol", "input": "Olá!"}'</code></pre>
 
       <p><strong>Messages (Anthropic):</strong></p>
       <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/messages \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"model": "claude-sonnet-4-5", "max_tokens": 1024, "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
+  -d '{"model": "gpt-6.1-sol", "max_tokens": 1024, "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
 
       <p><strong>Listagem de modelos:</strong></p>
       <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/models -H "Authorization: Bearer $KEY"</code></pre>
@@ -233,7 +233,7 @@ def _render_home_html() -> str:
         <li>Nos clientes Anthropic, <code>max_tokens</code> vira <code>max_completion_tokens</code> internamente — mas <strong>nenhum limite de tokens chega ao backend</strong>: o plano rejeita <code>max_output_tokens</code> ("Unsupported parameter").</li>
         <li><code>reasoning_effort</code> (string) e <code>reasoning.effort</code> (objeto) são repassados como <code>reasoning.effort</code>. Sem esse repasse, o backend trata reasoning como ativo e rejeita <code>temperature != 1</code>; com effort <code>none</code> o inverso vale — o backend rejeita qualquer <code>temperature</code>, então o campo é removido.</li>
         <li>Streams de chat terminam com <code>data: [DONE]</code>; streams Anthropic usam eventos SSE (<code>message_start</code>, <code>content_block_*</code>, <code>message_delta</code>, <code>message_stop</code>).</li>
-        <li>Modelos fora da allowlist do ChatGPT Plan caem no <code>DEFAULT_MODEL</code>, e o modelo solicitado é ecoado na resposta.</li>
+        <li>O proxy só fala com modelos do ChatGPT Plan. Se o cliente pedir um nome fora da allowlist (SDKs Anthropic costumam mandar <code>claude-*</code>), o upstream usa <code>DEFAULT_MODEL</code> (<code>gpt-6.1-sol</code> por padrão) e a resposta ecoa o nome que o cliente pediu.</li>
       </ul>
     </section>
 

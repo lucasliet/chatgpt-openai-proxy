@@ -55,10 +55,10 @@ class Settings(BaseSettings):
     # original, sem dependência do LiteLLM no caminho da requisição).
     upstream_engine: str = "litellm"
 
-    # Modelo usado quando o cliente pede um modelo fora da allowlist
-    # (ex.: clientes Anthropic que enviam "claude-sonnet-4-5"). Precisa ser
-    # um modelo que o backend Codex do ChatGPT Plan suporte hoje.
-    default_model: str = "gpt-6-luna"
+    # Modelo upstream quando o cliente pede um nome fora da allowlist
+    # (ex.: clientes Anthropic que enviam "claude-*"). Precisa ser um
+    # modelo que o backend Codex do ChatGPT Plan suporte hoje.
+    default_model: str = "gpt-6.1-sol"
 
     oauth_client_id: str = "app_EMoamEEZ73f0CkXaXp7hrann"
     oauth_auth_url: str = "https://auth.openai.com/oauth/authorize"
