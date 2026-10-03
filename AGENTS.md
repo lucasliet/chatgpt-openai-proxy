@@ -18,6 +18,14 @@
 - Tokens OAuth (`access_token`/`refresh_token`) são **cifrados em repouso** via `EncryptedText` (`app/crypto.py`, Fernet). `TOKEN_ENCRYPTION_KEY` aceita lista separada por vírgula (rotação: a primeira cifra, todas decifram). Com `DATABASE_URL` a env é obrigatória (boot falha sem ela); sem ela e sem DATABASE_URL, keyfile `token.key` 0600 no proxy home. `init_db()` migra texto puro legado e rotaciona chaves antigas — manter idempotência.
 - `GET /` serve a landing page/documentação de uso embutida; `GET /logout` renderiza a página de confirmação e `POST /logout` (com Bearer key) faz hard delete do usuário + credenciais OAuth + todas as suas API keys — irreversível; voltar exige novo `/login`.
 - **Backoffice web**: `/admin-login` valida a `ADMIN_API_KEY` (mesma da API JSON) e grava cookie de sessão admin assinado (HMAC-SHA256 com `COOKIE_SECRET`, httponly, SameSite=Lax, 12h). `/backoffice` e filhos exigem esse cookie via `require_admin_session` — sem ele, 303 para `/admin-login` (o handler de `HTTPException` em `main.py` converte 3xx+Location em redirect). As ações do backoffice reutilizam os handlers de `app/routers/admin.py` para não divergir; a API JSON `/admin/*` continua com `X-Admin-Key`.
+- **Dashboard do usuário**: `/dashboard/login/*` usa OAuth separado do cadastro. Só aceita `account_id` já existente; nunca cria usuário, salva credenciais OAuth ou altera API keys. Cookie `dashboard_session` assinado, 12h; identidade inclui criação da conta para impedir reuso após exclusão. `COOKIE_SECRET` aleatório de pelo menos 32 caracteres é obrigatório para habilitar o fluxo. Consultas sempre usam o usuário da sessão, nunca `user_id` recebido do cliente. `/dashboard/logout` só encerra a sessão.
+
+## Telemetria mínima
+
+- `app/telemetry.py` captura `usage` do Codex antes dos conversores, nos três endpoints, streaming ou não. Persistir apenas agregados por usuário/hora UTC/modelo efetivo, sem conteúdo, IPs, payloads ou ferramentas. Ausência de `usage` é desconhecida, não consumo medido de zero.
+- `proxy_usage` usa upsert atômico e FK `ON DELETE CASCADE`. A captura inclui a criação da conta para descartar escritas de streams após exclusão/recriação. Cache integra tokens de entrada; reasoning integra saída — não somar novamente.
+- Retenção de 30 dias, limpeza no boot e a cada hora enquanto ativo. Painéis em `/dashboard` e `/backoffice/users/{id}/usage` compartilham renderização e filtros Hoje/7/30 dias.
+- `app/pricing.py` busca catálogo público OpenAI do models.dev a cada 24h, persistido no banco; falhas preservam catálogo anterior. `PRICING_ENABLED=false` desliga fetch, não telemetria. Custos históricos em USD não são recalculados; modelos sem preço exato ficam sem estimativa. Testes não consultam o catálogo real nem providers reais.
 
 ## FastAPI Cloud
 

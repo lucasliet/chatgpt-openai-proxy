@@ -28,6 +28,8 @@ async def home_page():
 
 
 _PAGE_CSS = """
+.topbar { flex-wrap: wrap; }
+.topbar nav { flex-wrap: wrap; }
 .hero { padding: 3rem 0 1.5rem; }
 .hero h1 { font-size: clamp(2.3rem, 5.5vw, 3.6rem); font-weight: 700; margin: 0 0 1rem; max-width: 18ch; }
 .hero .sub { color: var(--muted); font-size: 1.05rem; max-width: 58ch; margin: 0; }
@@ -95,6 +97,7 @@ def _render_home_html() -> str:
       <a class="brand" href="/">chatgpt-openai-proxy</a>
       <nav>
         <a href="/login">/login</a>
+        <a href="/dashboard">/dashboard</a>
         <a href="/logout">/logout</a>
         <a href="/health">/health</a>
         """
@@ -246,7 +249,7 @@ def _render_home_html() -> str:
       </p>
       <ul>
         <li><code>GET /logout</code> mostra uma página para colar a API key e segurar o botão para confirmar a exclusão.</li>
-        <li><code>POST /logout</code> com <code>Authorization: Bearer &lt;key&gt;</code> deleta o usuário, as credenciais OAuth e <strong>TODAS</strong> as API keys dele do banco, em uma única operação.</li>
+        <li><code>POST /logout</code> com <code>Authorization: Bearer &lt;key&gt;</code> deleta o usuário, as credenciais OAuth, <strong>TODAS</strong> as API keys e a telemetria dele do banco, em uma única operação.</li>
         <li>A API key para de funcionar <strong>na hora</strong> (passa a retornar 401).</li>
         <li>A exclusão é <strong>irreversível</strong> — não há como desfazer.</li>
         <li>Para voltar a usar o proxy, basta fazer <a href="/login">/login</a> de novo (será criado um novo usuário com uma nova key).</li>
@@ -265,6 +268,7 @@ def _render_home_html() -> str:
         <li>Tokens OAuth (<code>access_token</code>/<code>refresh_token</code>) <strong>cifrados em repouso</strong> com Fernet — no banco só existe ciphertext.</li>
         <li>API keys <strong>apenas como hash SHA-256</strong> — a chave completa nunca é armazenada.</li>
         <li>Metadados: labels de keys, timestamps de criação, último login e último uso de cada key.</li>
+        <li><strong>Telemetria de uso por usuário:</strong> agregados por hora UTC e modelo executado, quantidade de chamadas de IA (concluídas, falhas e interrompidas), tokens de entrada, entrada em cache e saída, chamadas sem uso informado e estimativas de custo em USD. Não guardamos registros individuais das conversas.</li>
       </ul>
       <p><strong>O que o proxy NÃO guarda:</strong></p>
       <ul>
@@ -273,10 +277,14 @@ def _render_home_html() -> str:
       </ul>
       <p><strong>Retenção:</strong></p>
       <ul>
-        <li>Os dados ficam no banco <strong>enquanto a conta existir</strong> — não há expiração automática.</li>
+        <li>Dados de cadastro, credenciais e API keys ficam no banco <strong>enquanto a conta existir</strong>.</li>
+        <li>A telemetria mantém uma janela de <strong>até 30 dias</strong>, com limpeza automática por hora enquanto o serviço está ativo e no início da aplicação. Não fica acessível fora dessa janela. Com o serviço desligado, a limpeza acontece na próxima inicialização.</li>
         <li>A exclusão é imediata, completa e irreversível via <a href="/logout">/logout</a> (self-service) ou pelo operador do serviço.</li>
+        <li>A exclusão remove também toda a telemetria associada ao usuário do banco ativo. Backups e logs de infraestrutura seguem as políticas do provedor de hospedagem.</li>
         <li>Em caso de vazamento do banco, tokens e keys são inúteis: os tokens exigem a chave Fernet (que fica fora do banco, em env/keyfile) e as keys só existem como hash irreversível.</li>
       </ul>
+      <p><strong>Acesso e finalidade:</strong> a telemetria serve para acompanhar consumo e modelos utilizados. O administrador do serviço consulta os dados internamente; cada usuário consulta somente os próprios dados em <a href="/dashboard">/dashboard</a>, após login com sua conta ChatGPT já cadastrada. Esse login não cria conta, não altera credenciais OAuth armazenadas e não gera nem revoga API keys. A sessão do dashboard expira em 12 horas; sair dela não exclui a conta.</p>
+      <p><strong>Estimativa de custo:</strong> usamos os preços públicos da API OpenAI via models.dev, considerando entrada, cache, saída e faixas de contexto. É uma referência equivalente de API, <strong>não uma cobrança da assinatura ChatGPT</strong>. Modelos sem preço ou chamadas sem uso informado ficam sem estimativa; totais podem ser parciais. Atualizações de preço não recalculam o histórico. O catálogo público é consultado pelo servidor sem enviar dados de usuários ou conversas ao models.dev.</p>
       <p>
         <strong>Hospedagem:</strong> o deploy de produção roda no
         <a href="https://fastapicloud.com" target="_blank" rel="noopener">FastAPI Cloud</a>

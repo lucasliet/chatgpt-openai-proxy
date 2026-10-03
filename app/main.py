@@ -9,6 +9,7 @@ Deploy no FastAPI Cloud: ``fastapi deploy`` (o entrypoint ``app.main:app``
 está configurado em ``[tool.fastapi]`` no pyproject.toml).
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -19,8 +20,21 @@ from starlette.middleware.sessions import SessionMiddleware
 from .codex import build_engine
 from .config import Settings, get_settings, resolved_database_url
 from .database import init_db
-from .routers import admin, anthropic, backoffice, chat, home, login, logout, models, responses
+from .pricing import maintain_telemetry
+from .routers import (
+    admin,
+    anthropic,
+    backoffice,
+    chat,
+    dashboard,
+    home,
+    login,
+    logout,
+    models,
+    responses,
+)
 from .security import generate_api_key
+from .telemetry import purge_expired
 
 logger = logging.getLogger("chatgpt-proxy")
 
@@ -50,10 +64,19 @@ def _bootstrap_admin_key(settings: Settings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    await asyncio.to_thread(purge_expired)
     _bootstrap_admin_key(app.state.settings)
     db_target = resolved_database_url(app.state.settings).split("@")[-1]  # oculta credenciais
     logger.info("Proxy pronto (engine=%s, db=%s)", app.state.engine.name, db_target)
-    yield
+    maintenance = asyncio.create_task(maintain_telemetry(app.state.settings.pricing_enabled))
+    try:
+        yield
+    finally:
+        maintenance.cancel()
+        try:
+            await maintenance
+        except asyncio.CancelledError:
+            pass
 
 
 def create_app() -> FastAPI:
@@ -87,6 +110,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(home.router, tags=["home"])
+    app.include_router(dashboard.router, tags=["dashboard"])
     app.include_router(login.router, prefix="/login", tags=["login"])
     app.include_router(logout.router, prefix="/logout", tags=["logout"])
     app.include_router(admin.router, prefix="/admin", tags=["admin"])

@@ -16,11 +16,11 @@ def _setup_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("ADMIN_API_KEY", "sk-admin-test")
     # Chave Fernet fixa de teste (obrigatória quando DATABASE_URL está definida).
-    monkeypatch.setenv(
-        "TOKEN_ENCRYPTION_KEY", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
-    )
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
     # Engine httpx nos testes: interceptável deterministicamente pelo respx.
     monkeypatch.setenv("UPSTREAM_ENGINE", "httpx")
+    monkeypatch.setenv("PRICING_ENABLED", "false")
+    monkeypatch.setenv("COOKIE_SECRET", "dashboard-test-secret-not-for-production-123456")
 
 
 def _build_client(monkeypatch, tmp_path) -> TestClient:
@@ -65,7 +65,9 @@ def create_user_with_credentials(
     from app.database import get_engine
     from app.models import User
 
-    created = client.post("/admin/users", json={"name": name}, headers={"X-Admin-Key": "sk-admin-test"})
+    created = client.post(
+        "/admin/users", json={"name": name}, headers={"X-Admin-Key": "sk-admin-test"}
+    )
     assert created.status_code == 201, created.text
     user_id = created.json()["id"]
 

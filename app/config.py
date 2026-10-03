@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     # original, sem dependência do LiteLLM no caminho da requisição).
     upstream_engine: str = "litellm"
 
+    pricing_enabled: bool = True
+
     oauth_client_id: str = "app_EMoamEEZ73f0CkXaXp7hrann"
     oauth_auth_url: str = "https://auth.openai.com/oauth/authorize"
     oauth_token_url: str = "https://auth.openai.com/oauth/token"

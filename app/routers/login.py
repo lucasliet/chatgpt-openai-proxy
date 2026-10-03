@@ -105,7 +105,7 @@ async def login_complete(
         pkce = json.loads(raw_cookie)
         verifier, expected_state = pkce["verifier"], pkce["state"]
     except (json.JSONDecodeError, KeyError, TypeError):
-        raise _login_error("Sessão de login corrompida. Reinicie o fluxo.")
+        raise _login_error("Sessão de login corrompida. Reinicie o fluxo.") from None
 
     parsed = _parse_callback_url(payload.callbackUrl.strip())
     if "error" in parsed:
@@ -118,18 +118,18 @@ async def login_complete(
     try:
         token = await exchange_code_for_tokens(settings, parsed["code"], verifier)
     except Exception as exc:
-        raise _login_error(f"Falha na troca do código: {exc}")
+        raise _login_error(f"Falha na troca do código: {exc}") from exc
 
     credentials = token_to_credentials(token)
     if not credentials.account_id:
-        raise _login_error("Não foi possível identificar a conta ChatGPT (account_id ausente no id_token).")
+        raise _login_error(
+            "Não foi possível identificar a conta ChatGPT (account_id ausente no id_token)."
+        )
 
     claims = parse_jwt_claims(token.get("id_token", "")) or {}
 
     # Upsert por account_id: re-login renova tokens sem duplicar usuário.
-    user = session.exec(
-        select(User).where(User.account_id == credentials.account_id)
-    ).first()
+    user = session.exec(select(User).where(User.account_id == credentials.account_id)).first()
     if user is None:
         name = _display_name(claims, credentials.account_id)
         existing = session.exec(select(User).where(User.name == name)).first()
@@ -201,7 +201,14 @@ _PAGE_CSS = """
 """
 
 
-def _render_login_html(callback_port: int) -> str:
+def _render_login_html(callback_port: int, dashboard: bool = False) -> str:
+    flow_path = "/dashboard/login" if dashboard else "/login"
+    heading = "Consulte seu consumo" if dashboard else "Conecte sua conta ChatGPT"
+    description = (
+        "Entre com sua conta ChatGPT já cadastrada no proxy. Este acesso não cria conta nem altera API keys."
+        if dashboard
+        else "Autorize o proxy a usar a sua assinatura e receba a API key de acesso. Cada login gera uma nova key e revoga as anteriores."
+    )
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -220,8 +227,8 @@ def _render_login_html(callback_port: int) -> str:
 
     <div class="rise" style="--d: 0">
       <p class="eyebrow"><span class="tick">///</span> LOGIN</p>
-      <h1>Conecte sua conta ChatGPT</h1>
-      <p class="muted">Autorize o proxy a usar a sua assinatura e receba a API key de acesso. Cada login gera uma nova key e revoga as anteriores.</p>
+      <h1>{heading}</h1>
+      <p class="muted">{description}</p>
     </div>
 
     <div class="rise" style="--d: 1">
@@ -261,7 +268,7 @@ def _render_login_html(callback_port: int) -> str:
       btn.disabled = true;
       btn.textContent = 'Gerando URL...';
       try {{
-        const resp = await fetch('/login/start', {{ method: 'POST' }});
+        const resp = await fetch('{flow_path}/start', {{ method: 'POST' }});
         const text = await resp.text();
         let data;
         try {{ data = JSON.parse(text); }} catch (parseErr) {{
@@ -294,7 +301,7 @@ def _render_login_html(callback_port: int) -> str:
       btn.disabled = true;
       btn.textContent = 'Validando...';
       try {{
-        const resp = await fetch('/login/complete', {{
+        const resp = await fetch('{flow_path}/complete', {{
           method: 'POST',
           headers: {{ 'Content-Type': 'application/json' }},
           body: JSON.stringify({{ callbackUrl }})
@@ -305,6 +312,7 @@ def _render_login_html(callback_port: int) -> str:
           throw new Error('Resposta inesperada do servidor (HTTP ' + resp.status + '). Tente novamente em instantes.');
         }}
         if (!resp.ok) throw new Error(data.error?.message || 'Erro');
+        if (data.dashboard) {{ window.location.assign('/dashboard'); return; }}
         showStatus('Login concluído! Conta: ' + (data.accountId || '?') + '. Use a API key abaixo no proxy.', 'ok');
         const box = document.getElementById('apiKeyBox');
         box.textContent = data.apiKey;

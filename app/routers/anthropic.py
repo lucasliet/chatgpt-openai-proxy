@@ -10,6 +10,8 @@ O ``model`` do request é repassado ao upstream como nos demais endpoints —
 clientes Anthropic precisam enviar um modelo do ChatGPT Plan.
 """
 
+from contextlib import aclosing
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -24,10 +26,14 @@ from ..converters.anthropic import (
     format_anthropic_sse,
 )
 from ..converters.chat_completions import chat_to_responses, responses_to_chat
-from ..converters.streams import aggregate_responses_events, responses_events_to_chat_chunks
+from ..converters.streams import (
+    aggregate_responses_events,
+    responses_events_to_chat_chunks,
+)
 from ..database import get_session
 from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
+from ..telemetry import tracked_events
 from .common import upstream_error_response
 
 router = APIRouter()
@@ -50,7 +56,9 @@ async def create_message(
 
     if body.get("stream"):
         return StreamingResponse(
-            _anthropic_stream(engine, credentials, payload, model),
+            _anthropic_stream(
+                engine, credentials, payload, model, auth.user.id, auth.user.created_at
+            ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
@@ -59,7 +67,7 @@ async def create_message(
     payload["stream"] = True
     try:
         response = await aggregate_responses_events(
-            engine.responses_stream(credentials, payload)
+            tracked_events(engine, credentials, payload, auth.user.id, auth.user.created_at)
         )
     except UpstreamError as error:
         return upstream_error_response(error)
@@ -71,9 +79,16 @@ async def create_message(
 
 
 async def _anthropic_stream(
-    engine: Engine, credentials: Credentials, payload: dict[str, Any], model: str
+    engine: Engine,
+    credentials: Credentials,
+    payload: dict[str, Any],
+    model: str,
+    user_id: int,
+    user_created_at: datetime,
 ):
-    events = engine.responses_stream(credentials, payload)
-    chunks = responses_events_to_chat_chunks(events, model)
-    async for event_type, data in chat_chunks_to_anthropic_events(chunks, model):
-        yield format_anthropic_sse(event_type, data)
+    async with aclosing(
+        tracked_events(engine, credentials, payload, user_id, user_created_at)
+    ) as events:
+        chunks = responses_events_to_chat_chunks(events, model)
+        async for event_type, data in chat_chunks_to_anthropic_events(chunks, model):
+            yield format_anthropic_sse(event_type, data)

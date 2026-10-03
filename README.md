@@ -42,7 +42,7 @@ O projeto segue as convenções da plataforma (entrypoint em `[tool.fastapi]`, `
 ```bash
 uvx fastapi login
 fastapi cloud env set --secret ADMIN_API_KEY "sk-admin-segura"
-fastapi cloud env set --secret COOKIE_SECRET "segredo-aleatorio"
+fastapi cloud env set --secret COOKIE_SECRET "segredo-aleatorio-de-pelo-menos-32-caracteres"
 fastapi cloud env set --secret TOKEN_ENCRYPTION_KEY "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 fastapi deploy
 ```
@@ -71,13 +71,23 @@ Endpoints admin: `GET/POST/DELETE /admin/users[...]` · `GET/POST /admin/users/{
 
 O mesmo gerenciamento existe em interface web: **`/admin-login`** (entre com a `ADMIN_API_KEY`) abre sessão de 12h e libera o **`/backoffice`** — listagem de usuários com status da credencial e keys, criação de usuário, emissão/revogação de keys e remoção de usuários. Todas as rotas `/backoffice` exigem o cookie de sessão admin; sem ele, redirecionam para o login.
 
+### Telemetria e dashboard
+
+No backoffice, **Ver consumo** abre `/backoffice/users/{id}/usage`. Cada usuário pode consultar somente os próprios dados em **`/dashboard`**, com login OAuth do ChatGPT. Esse fluxo aceita apenas contas já cadastradas: não cria usuário, não atualiza credenciais armazenadas e não gera nem revoga API keys. A sessão expira em 12h; **Sair do dashboard** encerra somente a sessão. Configure `COOKIE_SECRET` com um segredo aleatório de pelo menos 32 caracteres, compartilhado entre réplicas; o dashboard recusa o segredo padrão de desenvolvimento.
+
+Persistimos apenas agregados por usuário, hora UTC e modelo efetivamente executado: chamadas de IA concluídas/falhas/interrompidas, tokens de entrada, entrada em cache e saída, chamadas sem uso informado e custo estimado em USD. Streaming e não-streaming usam a mesma captura do upstream. Páginas, login, `/health`, `/v1/models` e requisições rejeitadas antes do upstream não entram no contador. Não guardamos prompts, respostas, payloads, IPs ou ferramentas na telemetria. Sem `usage` informado pelo upstream, o consumo é desconhecido, não uma medição de zero tokens.
+
+Os painéis têm filtros Hoje/7 dias/30 dias, gráfico horário por modelo e detalhamento de tokens e custo. Preços vêm do catálogo público OpenAI em `https://models.dev/api.json`, atualizado em runtime a cada 24h e persistido no banco. Falhas mantêm o último catálogo válido e tentam novamente na próxima manutenção horária, sem bloquear inferência. A estimativa considera entrada não cacheada, cache, saída e faixas de contexto; reasoning e cache não são somados duas vezes. **É uma referência equivalente de API, não cobrança da assinatura ChatGPT.** Modelos sem correspondência exata e chamadas sem uso ficam sem estimativa; totais podem ser parciais. Preços novos não recalculam o histórico. Nenhum dado do usuário é enviado ao models.dev.
+
+**Retenção:** telemetria acessível por até 30 dias, com remoção automática de agregados expirados na inicialização e a cada hora enquanto o serviço está ativo. Com a aplicação desligada, a limpeza ocorre no próximo boot. `/logout` e exclusão administrativa removem também os agregados do banco ativo e invalidam o acesso ao dashboard. Dados cadastrais e credenciais permanecem enquanto a conta existir. Backups e logs de infraestrutura seguem as políticas da hospedagem. A política pública está em `/#privacidade`.
+
 ### Rotação de API key
 
 Perdeu a key ou ela venceu? Basta refazer o `/login` com a mesma conta ChatGPT: o proxy faz upsert dos tokens OAuth, **revoga as keys antigas** e exibe uma nova (fluxo descrito em "Como funciona"). Para revogar uma key sem trocar as demais, use `POST /admin/keys/{id}/revoke`.
 
 ### Logout e exclusão de dados
 
-`GET /logout` renderiza uma página para colar a API key e confirmar. `POST /logout` com a key autenticada **remove permanentemente do banco** o usuário dono da key, suas credenciais OAuth e **todas as suas API keys** — como se a conta nunca tivesse sido cadastrada. A key para de funcionar imediatamente (passa a responder 401):
+`GET /logout` renderiza uma página para colar a API key e confirmar. `POST /logout` com a key autenticada **remove permanentemente do banco** o usuário dono da key, suas credenciais OAuth, **todas as suas API keys** e a telemetria — como se a conta nunca tivesse sido cadastrada. A key para de funcionar imediatamente (passa a responder 401):
 
 ```bash
 curl -X POST https://<app>.fastapicloud.dev/logout \
@@ -132,7 +142,8 @@ client.messages.create(model="gpt-6.1-sol", max_tokens=1024, messages=[...])
 | `CHATGPT_PROXY_HOME` | `~/.config/chatgpt-proxy` | Diretório do armazenamento local |
 | `UPSTREAM_ENGINE` | `litellm` | `litellm` (default) ou `httpx` |
 | `ADMIN_API_KEY` | — (gerada no boot) | Chave dos endpoints `/admin/*` |
-| `COOKIE_SECRET` | dev | Segredo do cookie de sessão do `/login` |
+| `COOKIE_SECRET` | dev | Segredo das sessões web; dashboard exige segredo aleatório de pelo menos 32 caracteres, compartilhado entre réplicas |
+| `PRICING_ENABLED` | `true` | Atualização runtime do catálogo models.dev; `false` desliga consultas externas, preservando telemetria e preços já persistidos |
 | `CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Backend do plano ChatGPT |
 
 ## Docker
@@ -147,7 +158,7 @@ O compose monta `./data:/data` (`CHATGPT_PROXY_HOME` da imagem) — `proxy.db` *
 
 ```bash
 uv sync                 # instala deps (inclui grupo dev)
-uv run pytest           # 105 testes (upstream Codex mockado com respx)
+uv run pytest           # upstream Codex e catálogo de preços mockados
 uv run fastapi dev      # servidor com reload
 ```
 

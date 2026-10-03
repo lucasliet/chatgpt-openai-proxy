@@ -34,6 +34,7 @@ from .theme import (
     THEME_TOGGLE_HTML,
     THEME_TOGGLE_SCRIPT,
 )
+from .usage_page import UsagePeriod, render_usage
 
 router = APIRouter()
 
@@ -112,9 +113,7 @@ async def admin_login_submit(request: Request):
     form = await request.form()
     key = form.get("key")
     if not is_admin_key(settings, key if isinstance(key, str) else None):
-        return HTMLResponse(
-            _render_login_html(error="Chave de admin inválida."), status_code=401
-        )
+        return HTMLResponse(_render_login_html(error="Chave de admin inválida."), status_code=401)
     response = RedirectResponse("/backoffice", status_code=303)
     response.set_cookie(
         ADMIN_COOKIE,
@@ -137,7 +136,9 @@ async def backoffice_page(request: Request, session: Annotated[Session, Depends(
 
 
 @backoffice_router.post("/backoffice/users")
-async def backoffice_create_user(request: Request, session: Annotated[Session, Depends(get_session)]):
+async def backoffice_create_user(
+    request: Request, session: Annotated[Session, Depends(get_session)]
+):
     form = await request.form()
     name = str(form.get("name", "")).strip()
     if not name:
@@ -146,7 +147,24 @@ async def backoffice_create_user(request: Request, session: Annotated[Session, D
         admin_api.create_user(admin_api.UserCreate(name=name), session)
     except HTTPException as exc:
         return _redirect_with(err=_detail_message(exc))
-    return _redirect_with(ok=f"Usuário '{name}' criado. Ele ainda precisa fazer /login para conectar a conta ChatGPT.")
+    return _redirect_with(
+        ok=f"Usuário '{name}' criado. Ele ainda precisa fazer /login para conectar a conta ChatGPT."
+    )
+
+
+@backoffice_router.get("/backoffice/users/{user_id}/usage", response_class=HTMLResponse)
+def backoffice_usage(
+    user_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    days: UsagePeriod = UsagePeriod.WEEK,
+):
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    return HTMLResponse(
+        render_usage(session, user, days, admin=True),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @backoffice_router.post("/backoffice/users/{user_id}/delete")
@@ -171,7 +189,11 @@ async def backoffice_create_key(
     # A chave completa só existe nesta resposta — renderiza direto (sem PRG)
     # para não vazar em URL/histórico.
     return HTMLResponse(
-        _render_dashboard(session, ok=f"Key criada para o usuário #{user_id} — copie agora, ela não será exibida de novo.", new_key=created["key"])
+        _render_dashboard(
+            session,
+            ok=f"Key criada para o usuário #{user_id} — copie agora, ela não será exibida de novo.",
+            new_key=created["key"],
+        )
     )
 
 
@@ -277,13 +299,13 @@ def _credential_badge(user: User) -> str:
 
 def _key_row(key: ApiKey) -> str:
     if key.revoked_at:
-        status = f'<span class="badge err">revogada</span>'
+        status = '<span class="badge err">revogada</span>'
         action = ""
     else:
         status = '<span class="badge ok">ativa</span>'
         action = (
             f'<form class="inline-form" method="post" action="/backoffice/keys/{key.id}/revoke"'
-            f' onsubmit="return confirm(\'Revogar a key {key.prefix}…?\')">'
+            f" onsubmit=\"return confirm('Revogar a key {key.prefix}…?')\">"
             f'<button class="btn small danger" type="submit">Revogar</button></form>'
         )
     return (
@@ -294,11 +316,15 @@ def _key_row(key: ApiKey) -> str:
 
 
 def _user_panel(user: User, keys: list[ApiKey]) -> str:
-    rows = "".join(_key_row(k) for k in keys) or '<tr><td colspan="6" class="muted">Nenhuma key emitida.</td></tr>'
+    rows = (
+        "".join(_key_row(k) for k in keys)
+        or '<tr><td colspan="6" class="muted">Nenhuma key emitida.</td></tr>'
+    )
     return f"""
     <div class="panel rise" style="--d: 2">
       <div class="user-head">
         <h3>#{user.id} · {_esc(user.name)}</h3>
+        <a class="btn small ghost" href="/backoffice/users/{user.id}/usage">Ver consumo</a>
         <span>{_credential_badge(user)}
           <form class="inline-form" method="post" action="/backoffice/users/{user.id}/delete"
             onsubmit="return confirm('Remover o usuário #{user.id}, as credenciais OAuth e TODAS as keys?')">

@@ -6,17 +6,20 @@ não-streaming o proxy faz stream upstream e agrega o objeto ``response`` do
 evento ``response.completed`` antes de responder.
 """
 
+from contextlib import aclosing
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
-from ..converters.streams import aggregate_responses_events, format_sse
 from ..codex import Engine, UpstreamError
+from ..converters.streams import aggregate_responses_events, format_sse
 from ..database import get_session
 from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
+from ..telemetry import tracked_events
 from .common import upstream_error_response
 
 router = APIRouter()
@@ -45,7 +48,7 @@ async def create_response(
 
     if payload.get("stream"):
         return StreamingResponse(
-            _sse_relay(engine, credentials, payload),
+            _sse_relay(engine, credentials, payload, auth.user.id, auth.user.created_at),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
@@ -54,7 +57,7 @@ async def create_response(
     payload = {**payload, "stream": True}
     try:
         body = await aggregate_responses_events(
-            engine.responses_stream(credentials, payload)
+            tracked_events(engine, credentials, payload, auth.user.id, auth.user.created_at)
         )
     except UpstreamError as error:
         return upstream_error_response(error)
@@ -65,6 +68,15 @@ async def create_response(
     return JSONResponse(body)
 
 
-async def _sse_relay(engine: Engine, credentials: Credentials, payload: dict[str, Any]):
-    async for event in engine.responses_stream(credentials, payload):
-        yield format_sse(event)
+async def _sse_relay(
+    engine: Engine,
+    credentials: Credentials,
+    payload: dict[str, Any],
+    user_id: int,
+    user_created_at: datetime,
+):
+    async with aclosing(
+        tracked_events(engine, credentials, payload, user_id, user_created_at)
+    ) as events:
+        async for event in events:
+            yield format_sse(event)

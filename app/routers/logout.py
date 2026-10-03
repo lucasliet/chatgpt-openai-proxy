@@ -47,7 +47,7 @@ def logout(
     session.commit()
     return {
         "success": True,
-        "message": "Conta, credenciais e API keys removidas. Você pode se cadastrar novamente em /login.",
+        "message": "Conta, credenciais, API keys e telemetria removidas. Você pode se cadastrar novamente em /login.",
     }
 
 
@@ -124,7 +124,7 @@ def _render_logout_html() -> str:
 
     <div class="warning rise" style="--d: 1">
       Esta operação é <strong>irreversível</strong>: ela remove do proxy o seu usuário, as
-      credenciais OAuth da sua conta ChatGPT e <strong>todas as suas API keys</strong>.
+      credenciais OAuth da sua conta ChatGPT, <strong>todas as suas API keys</strong> e a telemetria de consumo.
       A API key deixa de funcionar <strong>na hora</strong>. Para usar o proxy novamente,
       basta se cadastrar de novo em <a href="/login">/login</a>.
     </div>

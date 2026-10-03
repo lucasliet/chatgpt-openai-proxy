@@ -1,5 +1,7 @@
 """Rota POST /v1/chat/completions — OpenAI Chat Completions no Codex."""
 
+from contextlib import aclosing
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -17,6 +19,7 @@ from ..converters.streams import (
 from ..database import get_session
 from ..deps import AuthContext, require_api_key, require_user_credentials
 from ..oauth import Credentials
+from ..telemetry import tracked_events
 from .common import upstream_error_response
 
 router = APIRouter()
@@ -36,7 +39,7 @@ async def create_chat_completion(
 
     if body.get("stream"):
         return StreamingResponse(
-            _chat_stream(engine, credentials, payload, model),
+            _chat_stream(engine, credentials, payload, model, auth.user.id, auth.user.created_at),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
@@ -46,7 +49,7 @@ async def create_chat_completion(
     payload["stream"] = True
     try:
         response = await aggregate_responses_events(
-            engine.responses_stream(credentials, payload)
+            tracked_events(engine, credentials, payload, auth.user.id, auth.user.created_at)
         )
     except UpstreamError as error:
         return upstream_error_response(error)
@@ -58,9 +61,16 @@ async def create_chat_completion(
 
 
 async def _chat_stream(
-    engine: Engine, credentials: Credentials, payload: dict[str, Any], model: str
+    engine: Engine,
+    credentials: Credentials,
+    payload: dict[str, Any],
+    model: str,
+    user_id: int,
+    user_created_at: datetime,
 ):
-    events = engine.responses_stream(credentials, payload)
-    async for chunk in responses_events_to_chat_chunks(events, model):
-        yield format_sse(chunk)
+    async with aclosing(
+        tracked_events(engine, credentials, payload, user_id, user_created_at)
+    ) as events:
+        async for chunk in responses_events_to_chat_chunks(events, model):
+            yield format_sse(chunk)
     yield DONE_FRAME
