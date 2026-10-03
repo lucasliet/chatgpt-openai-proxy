@@ -13,13 +13,13 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from .codex import build_engine
 from .config import Settings, get_settings, resolved_database_url
 from .database import init_db
-from .routers import admin, anthropic, chat, login, models, responses
+from .routers import admin, anthropic, backoffice, chat, home, login, logout, models, responses
 from .security import generate_api_key
 
 logger = logging.getLogger("chatgpt-proxy")
@@ -72,6 +72,9 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
+        # Guards de páginas HTML sinalizam redirect via 3xx + Location.
+        if 300 <= exc.status_code < 400 and exc.headers and "Location" in exc.headers:
+            return RedirectResponse(exc.headers["Location"], status_code=exc.status_code)
         # Erros no formato {"error": ...} são promovidos ao topo do body,
         # mantendo compatibilidade com clientes OpenAI/Anthropic.
         detail = exc.detail
@@ -83,8 +86,12 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    app.include_router(home.router, tags=["home"])
     app.include_router(login.router, prefix="/login", tags=["login"])
+    app.include_router(logout.router, prefix="/logout", tags=["logout"])
     app.include_router(admin.router, prefix="/admin", tags=["admin"])
+    app.include_router(backoffice.router, tags=["backoffice"])
+    app.include_router(backoffice.backoffice_router, tags=["backoffice"])
     app.include_router(models.router, prefix="/v1/models", tags=["models"])
     app.include_router(responses.router, prefix="/v1/responses", tags=["responses"])
     app.include_router(chat.router, prefix="/v1/chat/completions", tags=["chat"])

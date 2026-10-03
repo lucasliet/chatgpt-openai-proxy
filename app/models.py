@@ -6,15 +6,17 @@ usuário, com lock por conta. A API key (`sk-...`) é o que o cliente usa para
 falar com o proxy — ela aponta para o usuário, e o proxy usa a assinatura
 OAuth daquele usuário upstream.
 
-⚠️ Os tokens são armazenados em texto no banco (mesmo nível de proteção do
-`credentials.json` 0600 do proxy original). Para produção séria, considere
-cifrar em repouso (KMS/coluna cifrada) — o schema já isola os campos.
+Os tokens são cifrados em repouso (Fernet) pela coluna ``EncryptedText`` de
+``app/crypto.py`` — no banco só existe ciphertext; a chave vem de
+``TOKEN_ENCRYPTION_KEY`` ou do keyfile ``token.key`` no proxy home.
 """
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger
+from sqlalchemy import BigInteger, Column
 from sqlmodel import Field, SQLModel
+
+from .crypto import EncryptedText
 
 
 def utcnow() -> datetime:
@@ -35,9 +37,13 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
     last_login_at: datetime | None = None
 
-    # Credencial OAuth da assinatura ChatGPT deste usuário.
-    access_token: str = Field(default="")
-    refresh_token: str = Field(default="")
+    # Credencial OAuth da assinatura ChatGPT deste usuário (cifrada em repouso).
+    access_token: str = Field(
+        default="", sa_column=Column(EncryptedText, nullable=False, server_default="")
+    )
+    refresh_token: str = Field(
+        default="", sa_column=Column(EncryptedText, nullable=False, server_default="")
+    )
     expires_at: int = Field(default=0, sa_type=BigInteger)  # ms epoch; 0 = não autenticado
 
 

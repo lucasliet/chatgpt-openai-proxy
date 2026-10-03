@@ -11,8 +11,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY app ./app
 
-# SQLite em volume; em produção prefira Postgres via DATABASE_URL.
-ENV DATABASE_URL="sqlite:////data/proxy.db"
+# SQLite + keyfile de criptografia no volume; em produção prefira Postgres via
+# DATABASE_URL (aí TOKEN_ENCRYPTION_KEY passa a ser obrigatória).
+ENV CHATGPT_PROXY_HOME=/data
 ENV PORT=3000
 ENV PATH="/app/.venv/bin:$PATH"
 

@@ -15,6 +15,9 @@
 - Re-login na mesma conta (identificada pelo `account_id` do id_token) faz upsert dos tokens, **revoga as keys antigas** e exibe uma nova. Re-login nunca duplica usuário.
 - As rotas de proxy resolvem a cadeia: Bearer key → `ApiKey` (hash SHA-256 com salt) → `User` → credencial OAuth daquele usuário (com refresh pró-ativo de 5 min, lock por usuário).
 - Clientes Anthropic enviam `claude-*`; modelo fora da allowlist cai no `DEFAULT_MODEL` e o modelo solicitado é ecoado na resposta.
+- Tokens OAuth (`access_token`/`refresh_token`) são **cifrados em repouso** via `EncryptedText` (`app/crypto.py`, Fernet). `TOKEN_ENCRYPTION_KEY` aceita lista separada por vírgula (rotação: a primeira cifra, todas decifram). Com `DATABASE_URL` a env é obrigatória (boot falha sem ela); sem ela e sem DATABASE_URL, keyfile `token.key` 0600 no proxy home. `init_db()` migra texto puro legado e rotaciona chaves antigas — manter idempotência.
+- `GET /` serve a landing page/documentação de uso embutida; `GET /logout` renderiza a página de confirmação e `POST /logout` (com Bearer key) faz hard delete do usuário + credenciais OAuth + todas as suas API keys — irreversível; voltar exige novo `/login`.
+- **Backoffice web**: `/admin-login` valida a `ADMIN_API_KEY` (mesma da API JSON) e grava cookie de sessão admin assinado (HMAC-SHA256 com `COOKIE_SECRET`, httponly, SameSite=Lax, 12h). `/backoffice` e filhos exigem esse cookie via `require_admin_session` — sem ele, 303 para `/admin-login` (o handler de `HTTPException` em `main.py` converte 3xx+Location em redirect). As ações do backoffice reutilizam os handlers de `app/routers/admin.py` para não divergir; a API JSON `/admin/*` continua com `X-Admin-Key`.
 
 ## FastAPI Cloud
 
@@ -42,6 +45,6 @@
 ## Testes
 
 - Testes usam `pytest` + `pytest-asyncio` (modo auto) + `respx` para mockar o upstream Codex (`tests/conftest.py` força `UPSTREAM_ENGINE=httpx`).
-- Fixtures constroem um app fresco por teste com SQLite em tmp path e env isolada (cuidado com o `lru_cache` de `get_settings` — usar `cache_clear()` + `database.reset_engine()`).
+- Fixtures constroem um app fresco por teste com SQLite em tmp path e env isolada (cuidado com os caches — usar `get_settings.cache_clear()` + `database.reset_engine()` + `crypto.reset_keyring()`).
 - `tests/conftest.py` tem `create_user_with_credentials`/`create_api_key` para simular contas OAuth; fixtures de env globais de credencial foram removidas de propósito.
 - Ao adicionar env vars novas em `Settings`, refletir em `.env.example`, README e `tests/conftest.py::_setup_env` quando aplicável.

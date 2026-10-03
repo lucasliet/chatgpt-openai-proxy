@@ -12,6 +12,9 @@ Ao concluir:
 2. Toda re-login é tratada como recuperação: as API keys antigas da conta são
    **revogadas** e uma **nova key** é gerada e exibida (a chave completa só
    aparece desta vez).
+
+O CSS base vem de ``app/routers/theme.py`` (design system compartilhado);
+``_PAGE_CSS`` cobre apenas os blocos específicos do fluxo (steps, keybox).
 """
 
 import json
@@ -36,6 +39,13 @@ from ..oauth import (
     token_to_credentials,
 )
 from ..security import generate_api_key, hash_api_key, key_prefix
+from .theme import (
+    BASE_CSS,
+    THEME_HEAD_SCRIPT,
+    THEME_TOGGLE_CSS,
+    THEME_TOGGLE_HTML,
+    THEME_TOGGLE_SCRIPT,
+)
 
 router = APIRouter()
 
@@ -179,6 +189,17 @@ def _parse_callback_url(raw: str) -> dict[str, str]:
     return {"code": code, "state": state}
 
 
+_PAGE_CSS = """
+.step { animation: rise 260ms var(--ease-out); }
+.step ol { margin: 0.5rem 0; padding-left: 1.4rem; }
+.step li { margin: 0.3rem 0; }
+.step .btn { margin: 0.5rem 0; word-break: break-all; font-size: 0.85rem; }
+.actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.keybox { animation: rise 260ms var(--ease-out); }
+.status:not(.hidden) { animation: rise 220ms var(--ease-out); }
+"""
+
+
 def _render_login_html(callback_port: int) -> str:
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -186,97 +207,51 @@ def _render_login_html(callback_port: int) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Login</title>
-  <style>
-    :root {{ color-scheme: light dark; }}
-    body {{
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #0f1117;
-      color: #e6e6e6;
-      margin: 0;
-      padding: 2rem 1rem;
-      display: flex;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-    }}
-    .container {{ max-width: 640px; width: 100%; }}
-    h1 {{ font-size: 1.5rem; margin: 0 0 0.5rem; }}
-    p.muted {{ color: #8a8a8a; margin: 0 0 1.5rem; font-size: 0.9rem; }}
-    button, .btn {{
-      display: inline-block;
-      background: #4c9ed9;
-      color: #fff;
-      border: none;
-      padding: 0.7rem 1.2rem;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      cursor: pointer;
-      text-decoration: none;
-      font-family: inherit;
-    }}
-    button:hover, .btn:hover {{ background: #5fb0e8; }}
-    button:disabled {{ background: #2a3a4a; cursor: not-allowed; }}
-    input[type="text"] {{
-      width: 100%;
-      background: #1a1d27;
-      border: 1px solid #333;
-      color: #e6e6e6;
-      padding: 0.7rem;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-family: monospace;
-      box-sizing: border-box;
-    }}
-    .hidden {{ display: none; }}
-    .step {{ margin: 1rem 0; padding: 1rem; background: #1a1d27; border-radius: 8px; }}
-    .step ol {{ margin: 0.5rem 0; padding-left: 1.4rem; }}
-    .step li {{ margin: 0.3rem 0; line-height: 1.5; }}
-    .step a.btn {{ margin: 0.5rem 0; word-break: break-all; font-size: 0.85rem; }}
-    .status {{ margin-top: 1rem; padding: 0.8rem; border-radius: 6px; font-size: 0.9rem; }}
-    .status.ok {{ background: #1a3a1a; color: #7dd87d; }}
-    .status.err {{ background: #3a1a1a; color: #e87d7d; }}
-    label {{ display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: #aaa; }}
-    .actions {{ display: flex; gap: 0.5rem; margin-top: 0.5rem; }}
-    .apikey {{
-      margin-top: 1rem;
-      padding: 1rem;
-      background: #0d2b0d;
-      border: 1px solid #2d6e2d;
-      border-radius: 8px;
-      word-break: break-all;
-      font-family: monospace;
-      font-size: 0.95rem;
-      color: #a6f0a6;
-    }}
-  </style>
+  {THEME_HEAD_SCRIPT}
+  <style>{BASE_CSS}{_PAGE_CSS}{THEME_TOGGLE_CSS}</style>
 </head>
 <body>
-  <div class="container">
-    <h1>ChatGPT Proxy — Login</h1>
-    <p class="muted">Conecte sua conta ChatGPT (assinatura) para gerar a API key do proxy. Cada login gera uma nova key.</p>
+  <div class="container narrow">
+    <header class="topbar">
+      <a class="brand" href="/">chatgpt-openai-proxy</a>
+      <nav><a href="/">← documentação</a>{THEME_TOGGLE_HTML}</nav>
+    </header>
 
-    <button id="startBtn" onclick="startLogin()">Iniciar login com ChatGPT</button>
+    <div class="rise" style="--d: 0">
+      <p class="eyebrow"><span class="tick">///</span> LOGIN</p>
+      <h1>Conecte sua conta ChatGPT</h1>
+      <p class="muted">Autorize o proxy a usar a sua assinatura e receba a API key de acesso. Cada login gera uma nova key e revoga as anteriores.</p>
+    </div>
 
-    <div id="step2" class="step hidden">
+    <div class="rise" style="--d: 1">
+      <button class="btn" id="startBtn" onclick="startLogin()">Iniciar login com ChatGPT</button>
+    </div>
+
+    <div id="step2" class="panel step hidden">
       <ol>
         <li>Abra o link abaixo e autorize o acesso no ChatGPT.</li>
         <li>Quando o navegador mostrar um erro ao tentar abrir <code>localhost:{callback_port}/...</code> (<strong>normal em Docker/remoto</strong>), não feche a aba.</li>
         <li>Copie a <strong>URL completa da barra de endereços</strong> — ela começa com <code>http://localhost:{callback_port}/auth/callback?code=...</code>.</li>
         <li>Cole essa URL no campo abaixo e clique em Concluir.</li>
       </ol>
-      <a id="authLink" class="btn" target="_blank" rel="noopener">Abrir página de autorização ↗</a>
+      <a id="authLink" class="btn ghost" target="_blank" rel="noopener">Abrir página de autorização ↗</a>
     </div>
 
-    <div id="step3" class="step hidden">
+    <div id="step3" class="panel step hidden">
       <label for="callbackInput">Cole a URL de callback (localhost:{callback_port}/auth/callback?code=...)</label>
       <input id="callbackInput" type="text" placeholder="http://localhost:{callback_port}/auth/callback?code=...&state=...">
       <div class="actions">
-        <button id="completeBtn" onclick="completeLogin()">Concluir login</button>
+        <button class="btn" id="completeBtn" onclick="completeLogin()">Concluir login</button>
       </div>
     </div>
 
     <div id="status" class="status hidden"></div>
-    <div id="apiKeyBox" class="apikey hidden"></div>
+    <div id="apiKeyBox" class="keybox hidden"></div>
+
+    <footer class="footer">
+      <span>chatgpt-openai-proxy</span>
+      <span><a href="/logout">/logout</a> · <a href="/health">/health</a></span>
+    </footer>
   </div>
 
   <script>
@@ -348,5 +323,6 @@ def _render_login_html(callback_port: int) -> str:
       el.className = 'status ' + kind;
     }}
   </script>
+  {THEME_TOGGLE_SCRIPT}
 </body>
 </html>"""

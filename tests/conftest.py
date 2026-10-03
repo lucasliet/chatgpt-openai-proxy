@@ -15,22 +15,28 @@ from fastapi.testclient import TestClient
 def _setup_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("ADMIN_API_KEY", "sk-admin-test")
+    # Chave Fernet fixa de teste (obrigatória quando DATABASE_URL está definida).
+    monkeypatch.setenv(
+        "TOKEN_ENCRYPTION_KEY", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+    )
     # Engine httpx nos testes: interceptável deterministicamente pelo respx.
     monkeypatch.setenv("UPSTREAM_ENGINE", "httpx")
 
 
 def _build_client(monkeypatch, tmp_path) -> TestClient:
-    from app import database
+    from app import crypto, database
     from app.config import get_settings
     from app.main import create_app
 
     _setup_env(monkeypatch, tmp_path)
     database.reset_engine()
+    crypto.reset_keyring()
     get_settings.cache_clear()
 
     app = create_app()
     client = TestClient(app)
     database.reset_engine()
+    crypto.reset_keyring()
     get_settings.cache_clear()
     return client
 

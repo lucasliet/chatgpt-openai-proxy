@@ -18,6 +18,7 @@ cliente ──Bearer sk-...──▶ proxy ──OAuth do dono da key──▶ C
 - **Três formatos de entrada**: `POST /v1/responses` (passthrough), `POST /v1/chat/completions` e `POST /v1/messages` (Anthropic, com streaming SSE nos eventos oficiais) — conversões bidirecionais fieis ao proxy original
 - **Multi-conta**: cada usuário com sua assinatura; tokens isolados por usuário, refresh com lock por conta
 - **API keys** com hash SHA-256 (a chave completa nunca é armazenada), revogação e `last_used_at`
+- **Tokens OAuth cifrados em repouso** (Fernet — AES-128-CBC + HMAC): no banco só existe ciphertext. A chave vem de `TOKEN_ENCRYPTION_KEY` (aceita lista separada por vírgula para rotação); sem `DATABASE_URL`, uma chave é gerada em `CHATGPT_PROXY_HOME/token.key` (0600)
 - **Engine upstream intercambiável**: [LiteLLM](https://docs.litellm.ai/docs/response_api) (default) ou HTTPX direto (`UPSTREAM_ENGINE=httpx`)
 - **Banco agnóstico**: Postgres (Neon/Supabase) em produção; sem `DATABASE_URL`, arquivo SQLite em `CHATGPT_PROXY_HOME` — mesmo modelo do projeto anterior para run local/Docker
 
@@ -32,6 +33,8 @@ uv run fastapi dev
 
 Abra `http://localhost:3000/login`, autorize com sua conta ChatGPT e **copie a API key exibida**. Use essa key nas chamadas. Sem `DATABASE_URL`, tudo fica em `~/.config/chatgpt-proxy/proxy.db` (override via `CHATGPT_PROXY_HOME`; em Docker, monte o diretório como volume).
 
+A raiz do app (`GET /`) serve a **landing page** do projeto: documentação de uso embutida no próprio servidor (login, API key, rotação de keys, endpoints, tradução para Responses API e logout) — útil em deploy, onde não há README à mão.
+
 ## Deploy no FastAPI Cloud
 
 O projeto segue as convenções da plataforma (entrypoint em `[tool.fastapi]`, `fastapi[standard]`, `.python-version`, `.fastapicloudignore`):
@@ -40,6 +43,7 @@ O projeto segue as convenções da plataforma (entrypoint em `[tool.fastapi]`, `
 uvx fastapi login
 fastapi cloud env set --secret ADMIN_API_KEY "sk-admin-segura"
 fastapi cloud env set --secret COOKIE_SECRET "segredo-aleatorio"
+fastapi cloud env set --secret TOKEN_ENCRYPTION_KEY "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 fastapi deploy
 ```
 
@@ -64,6 +68,24 @@ curl -X POST https://<app>.fastapicloud.dev/admin/users/1/keys -H "X-Admin-Key: 
 ```
 
 Endpoints admin: `GET/POST/DELETE /admin/users[...]` · `GET/POST /admin/users/{id}/keys` · `POST /admin/keys/{id}/revoke`. A listagem mostra o status da credencial OAuth de cada usuário (autenticado, expiração, último login).
+
+O mesmo gerenciamento existe em interface web: **`/admin-login`** (entre com a `ADMIN_API_KEY`) abre sessão de 12h e libera o **`/backoffice`** — listagem de usuários com status da credencial e keys, criação de usuário, emissão/revogação de keys e remoção de usuários. Todas as rotas `/backoffice` exigem o cookie de sessão admin; sem ele, redirecionam para o login.
+
+### Rotação de API key
+
+Perdeu a key ou ela venceu? Basta refazer o `/login` com a mesma conta ChatGPT: o proxy faz upsert dos tokens OAuth, **revoga as keys antigas** e exibe uma nova (fluxo descrito em "Como funciona"). Para revogar uma key sem trocar as demais, use `POST /admin/keys/{id}/revoke`.
+
+### Logout e exclusão de dados
+
+`GET /logout` renderiza uma página para colar a API key e confirmar. `POST /logout` com a key autenticada **remove permanentemente do banco** o usuário dono da key, suas credenciais OAuth e **todas as suas API keys** — como se a conta nunca tivesse sido cadastrada. A key para de funcionar imediatamente (passa a responder 401):
+
+```bash
+curl -X POST https://<app>.fastapicloud.dev/logout \
+  -H "Authorization: Bearer $KEY"
+# {"success": true, "message": ...}
+```
+
+A exclusão é **irreversível**. Para voltar a usar o proxy, é preciso um novo `/login` — a conta é recriada do zero, com uma nova API key.
 
 ### Chamar a API
 
@@ -119,13 +141,13 @@ client.messages.create(model="claude-sonnet-4-5", max_tokens=1024, messages=[...
 docker compose up -d
 ```
 
-O compose monta `./data:/root/.config/chatgpt-proxy` — o armazenamento local sobrevive a recriações do container.
+O compose monta `./data:/data` (`CHATGPT_PROXY_HOME` da imagem) — `proxy.db` **e** o `token.key` (chave que cifra os tokens OAuth, gerada com 0600 no primeiro boot) sobrevivem a recriações do container. Para usar Postgres no lugar do SQLite, defina `DATABASE_URL` **e** `TOKEN_ENCRYPTION_KEY` (obrigatória nesse modo — sem ela o boot falha).
 
 ## Desenvolvimento
 
 ```bash
 uv sync                 # instala deps (inclui grupo dev)
-uv run pytest           # 67 testes (upstream Codex mockado com respx)
+uv run pytest           # 105 testes (upstream Codex mockado com respx)
 uv run fastapi dev      # servidor com reload
 ```
 
@@ -149,7 +171,7 @@ app/
 
 ## Segurança dos tokens
 
-Os tokens OAuth ficam em texto no banco, isolados por usuário — mesmo nível do `credentials.json` 0600 do projeto original. Para produção séria, considere cifrar em repouso; as chaves de API, em contraste, só existem como hash.
+Os tokens OAuth (`access_token`/`refresh_token`) são **cifrados em repouso** com Fernet (AES-128-CBC + HMAC) via `EncryptedText` (`app/crypto.py`) — no banco só existe ciphertext. A chave vem de `TOKEN_ENCRYPTION_KEY` (aceita lista separada por vírgula para rotação: a primeira cifra, todas decifram); sem `DATABASE_URL`, uma chave é gerada em `CHATGPT_PROXY_HOME/token.key` (0600). Com `DATABASE_URL` definida a env é **obrigatória** — instâncias efêmeras não podem gerar chave própria, senão cada uma gravaria tokens ilegíveis para as outras. As API keys, por sua vez, só existem como hash SHA-256 com salt.
 
 ## Por que não LiteLLM nos conversores?
 
@@ -157,4 +179,4 @@ O LiteLLM é a **engine upstream** (Responses API, `openai/` + `api_base` custom
 
 ## Testes
 
-66 testes: OAuth/PKCE/JWT, conversores, streams SSE, credenciais por usuário (refresh isolado), engines, endpoints HTTP e fluxos de login/re-login — tudo com o upstream Codex mockado.
+105 testes: OAuth/PKCE/JWT, conversores, streams SSE, credenciais por usuário (refresh isolado), engines, criptografia dos tokens em repouso, endpoints HTTP e fluxos de login/re-login — tudo com o upstream Codex mockado.

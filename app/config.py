@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # aleatória é gerada no boot e impressa nos logs (uma única vez).
     admin_api_key: str | None = None
 
+    # Chave Fernet que cifra os tokens OAuth em repouso (app/crypto.py). Aceita
+    # lista separada por vírgula para rotação: a primeira cifra, todas decifram.
+    # Sem a env e sem DATABASE_URL, uma chave é gerada em
+    # CHATGPT_PROXY_HOME/token.key (0600). Com DATABASE_URL definida a env é
+    # obrigatória — o boot falha sem ela (instâncias efêmeras não podem gerar
+    # chave própria).
+    token_encryption_key: str | None = None
+
     codex_base_url: str = "https://chatgpt.com/backend-api/codex"
 
     # Engine upstream: "litellm" (default) ou "httpx" (port fiel do proxy

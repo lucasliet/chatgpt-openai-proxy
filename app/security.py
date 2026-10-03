@@ -32,13 +32,18 @@ def key_prefix(key: str) -> str:
     return key[:12]
 
 
+def is_admin_key(settings: Settings, candidate: str | None) -> bool:
+    """Confere o candidato com a ADMIN_API_KEY em tempo constante."""
+    expected = settings.admin_api_key
+    return bool(expected and candidate) and hmac.compare_digest(candidate, expected)
+
+
 def require_admin(
     settings: Settings = Depends(get_settings),
     x_admin_key: str | None = Header(default=None, alias="X-Admin-Key"),
 ) -> None:
     """Dependency que exige o header X-Admin-Key correto nos endpoints /admin."""
-    expected = settings.admin_api_key
-    if not expected or not x_admin_key or not hmac.compare_digest(x_admin_key, expected):
+    if not is_admin_key(settings, x_admin_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={

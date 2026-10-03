@@ -128,12 +128,46 @@ def _ensure_user_column_types(engine: Engine) -> None:
             break
 
 
+def _encrypt_existing_tokens(engine: Engine) -> None:
+    """Cifra tokens legados em texto puro e rotaciona chaves antigas.
+
+    Roda via SQL cru (sem o ORM) para não passar pelo ``EncryptedText`` —
+    aqui o ponto é justamente inspecionar o valor físico. Idempotente:
+    ``upgraded_ciphertext`` retorna None para quem já está na chave primária.
+    Também é aqui que o keyring é resolvido no boot: com ``DATABASE_URL`` e
+    sem ``TOKEN_ENCRYPTION_KEY`` o erro acontece antes de servir tráfego.
+    """
+    from .crypto import get_keyring, upgraded_ciphertext
+
+    # Resolve o keyring no boot, mesmo sem dados: com DATABASE_URL e sem
+    # TOKEN_ENCRYPTION_KEY o erro acontece antes de servir tráfego.
+    get_keyring()
+
+    inspector = inspect(engine)
+    if "proxy_user" not in inspector.get_table_names():
+        return
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text("SELECT id, access_token, refresh_token FROM proxy_user")
+        ).all()
+        for row in rows:
+            for column in ("access_token", "refresh_token"):
+                value = getattr(row, column)
+                new_value = upgraded_ciphertext(value) if value else None
+                if new_value is not None:
+                    connection.execute(
+                        text(f"UPDATE proxy_user SET {column} = :value WHERE id = :id"),
+                        {"value": new_value, "id": row.id},
+                    )
+
+
 def init_db() -> None:
     """Cria as tabelas se não existirem (idempotente, seguro no boot)."""
     engine = get_engine()
     SQLModel.metadata.create_all(engine)
     _run_column_migrations(engine)
     _ensure_user_column_types(engine)
+    _encrypt_existing_tokens(engine)
 
 
 def get_session() -> Generator[Session, None, None]:
