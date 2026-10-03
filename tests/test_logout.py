@@ -17,6 +17,10 @@ class TestLogoutPage:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/html")
         assert "/login" in response.text
+        assert "btn danger hold" in response.text
+        assert "hold-fill" in response.text
+        assert "Segure para excluir" in response.text
+        assert "confirm(" not in response.text
 
 
 class TestLogout:

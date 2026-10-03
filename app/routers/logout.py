@@ -66,6 +66,28 @@ _PAGE_CSS = """
   line-height: 1.5;
 }
 .status:not(.hidden) { animation: rise 220ms var(--ease-out); }
+.btn.hold {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+.btn.hold .hold-fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.22);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 200ms var(--ease-out);
+  pointer-events: none;
+}
+.btn.hold.holding .hold-fill {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 2s linear;
+}
+.btn.hold .hold-label { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .btn.hold.holding .hold-fill { transition: clip-path 800ms linear !important; }
+}
 """
 
 
@@ -109,12 +131,18 @@ def _render_logout_html() -> str:
 
     <div class="panel step rise" style="--d: 2">
       <p>Cole abaixo a sua API key (a mesma gerada no /login, começa com <code>sk-</code>)
-      e confirme a exclusão da conta.</p>
+      e segure o botão por 2 segundos para confirmar a exclusão.</p>
       <label for="apiKeyInput">API key</label>
       <input id="apiKeyInput" type="password" autocomplete="off" placeholder="sk-...">
       <div class="actions">
-        <button class="btn danger" id="logoutBtn" onclick="deleteAccount()">Excluir minha conta</button>
+        <button type="button" class="btn danger hold" id="logoutBtn" aria-describedby="holdHint">
+          <span class="hold-fill" aria-hidden="true"></span>
+          <span class="hold-label">Segure para excluir</span>
+        </button>
       </div>
+      <p id="holdHint" class="muted" style="margin-top: 0.75rem; margin-bottom: 0; font-size: 0.85rem">
+        Solte antes dos 2s para cancelar. Em preferência de menos movimento, o hold é de 0,8s.
+      </p>
     </div>
 
     <div id="status" class="status hidden"></div>
@@ -126,39 +154,86 @@ def _render_logout_html() -> str:
   </div>
 
   <script>
-    async function deleteAccount() {
-      const apiKey = document.getElementById('apiKeyInput').value.trim();
-      if (!apiKey) { showStatus('Cole sua API key para continuar.', 'err'); return; }
-      if (!confirm('Tem certeza? Essa ação remove permanentemente sua conta, credenciais OAuth e todas as API keys do proxy.')) return;
+    (function setupHoldToDelete() {
       const btn = document.getElementById('logoutBtn');
-      btn.disabled = true;
-      btn.textContent = 'Removendo...';
-      try {
-        const resp = await fetch('/logout', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + apiKey }
-        });
-        const text = await resp.text();
-        let data;
-        try { data = JSON.parse(text); } catch (parseErr) {
-          throw new Error('Resposta inesperada do servidor (HTTP ' + resp.status + '). Tente novamente em instantes.');
-        }
-        if (!resp.ok) throw new Error(data.error?.message || 'Erro');
-        showStatus(data.message || 'Conta removida com sucesso. Para usar o proxy novamente, cadastre-se em /login.', 'ok');
-        document.getElementById('apiKeyInput').value = '';
-        btn.textContent = 'Conta excluída';
-      } catch (e) {
-        showStatus(e.message, 'err');
-        btn.disabled = false;
-        btn.textContent = 'Excluir minha conta';
-      }
-    }
+      const label = btn.querySelector('.hold-label');
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const holdMs = reduce ? 800 : 2000;
+      let timer = null;
+      let busy = false;
 
-    function showStatus(msg, kind) {
-      const el = document.getElementById('status');
-      el.textContent = msg;
-      el.className = 'status ' + kind;
-    }
+      function clearHold() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        btn.classList.remove('holding');
+      }
+
+      function startHold(e) {
+        if (busy || btn.disabled) return;
+        if (e.type === 'mousedown' && e.button !== 0) return;
+        if (e.cancelable) e.preventDefault();
+        const apiKey = document.getElementById('apiKeyInput').value.trim();
+        if (!apiKey) { showStatus('Cole sua API key para continuar.', 'err'); return; }
+        btn.classList.add('holding');
+        timer = setTimeout(function () {
+          timer = null;
+          btn.classList.remove('holding');
+          deleteAccount();
+        }, holdMs);
+      }
+
+      function cancelHold() {
+        if (!timer) return;
+        clearHold();
+      }
+
+      btn.addEventListener('pointerdown', startHold);
+      btn.addEventListener('pointerup', cancelHold);
+      btn.addEventListener('pointerleave', cancelHold);
+      btn.addEventListener('pointercancel', cancelHold);
+      btn.addEventListener('keydown', function (e) {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        if (e.repeat) return;
+        startHold(e);
+      });
+      btn.addEventListener('keyup', function (e) {
+        if (e.key === ' ' || e.key === 'Enter') cancelHold();
+      });
+      btn.addEventListener('blur', cancelHold);
+
+      async function deleteAccount() {
+        const apiKey = document.getElementById('apiKeyInput').value.trim();
+        if (!apiKey) { showStatus('Cole sua API key para continuar.', 'err'); return; }
+        busy = true;
+        btn.disabled = true;
+        label.textContent = 'Removendo...';
+        try {
+          const resp = await fetch('/logout', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + apiKey }
+          });
+          const text = await resp.text();
+          let data;
+          try { data = JSON.parse(text); } catch (parseErr) {
+            throw new Error('Resposta inesperada do servidor (HTTP ' + resp.status + '). Tente novamente em instantes.');
+          }
+          if (!resp.ok) throw new Error(data.error?.message || 'Erro');
+          showStatus(data.message || 'Conta removida com sucesso. Para usar o proxy novamente, cadastre-se em /login.', 'ok');
+          document.getElementById('apiKeyInput').value = '';
+          label.textContent = 'Conta excluída';
+        } catch (e) {
+          showStatus(e.message, 'err');
+          btn.disabled = false;
+          label.textContent = 'Segure para excluir';
+          busy = false;
+        }
+      }
+
+      function showStatus(msg, kind) {
+        const el = document.getElementById('status');
+        el.textContent = msg;
+        el.className = 'status ' + kind;
+      }
+    })();
   </script>
   """
         + THEME_TOGGLE_SCRIPT

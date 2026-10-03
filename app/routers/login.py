@@ -191,6 +191,7 @@ def _parse_callback_url(raw: str) -> dict[str, str]:
 
 _PAGE_CSS = """
 .step { animation: rise 260ms var(--ease-out); }
+.step.is-leaving { opacity: 0; transition: opacity 200ms var(--ease-out); }
 .step ol { margin: 0.5rem 0; padding-left: 1.4rem; }
 .step li { margin: 0.3rem 0; }
 .step .btn { margin: 0.5rem 0; word-break: break-all; font-size: 0.85rem; }
@@ -308,13 +309,27 @@ def _render_login_html(callback_port: int) -> str:
         const box = document.getElementById('apiKeyBox');
         box.textContent = data.apiKey;
         box.classList.remove('hidden');
-        document.getElementById('step2').classList.add('hidden');
-        document.getElementById('step3').classList.add('hidden');
+        await hideSteps([document.getElementById('step2'), document.getElementById('step3')]);
       }} catch (e) {{
         showStatus(e.message, 'err');
         btn.disabled = false;
         btn.textContent = 'Concluir login';
       }}
+    }}
+
+    function hideSteps(steps) {{
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const ms = reduce ? 120 : 200;
+      steps.forEach(function (el) {{ el.classList.add('is-leaving'); }});
+      return new Promise(function (resolve) {{
+        setTimeout(function () {{
+          steps.forEach(function (el) {{
+            el.classList.add('hidden');
+            el.classList.remove('is-leaving');
+          }});
+          resolve();
+        }}, ms);
+      }});
     }}
 
     function showStatus(msg, kind) {{

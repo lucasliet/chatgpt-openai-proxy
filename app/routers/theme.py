@@ -261,7 +261,10 @@ THEME_TOGGLE_CSS = """
   background: var(--surface);
   border: 1px solid var(--line);
   position: relative;
-  transition: background 250ms ease-out, border-color 250ms ease-out;
+  transition: background 250ms ease-out, border-color 250ms ease-out, transform 120ms ease-out;
+}
+@media (hover: hover) and (pointer: fine) {
+  .theme-toggle:active .track { transform: scale(0.97); }
 }
 .theme-toggle .thumb {
   position: absolute;

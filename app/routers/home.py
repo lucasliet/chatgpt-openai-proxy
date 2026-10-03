@@ -189,31 +189,31 @@ def _render_home_html() -> str:
     <section class="panel rise" style="--d: 6" id="endpoints">
       <p class="eyebrow"><span class="tick">///</span> 04</p>
       <h2>Endpoints</h2>
-      <p>Base URL: <code>https://&lt;seu-host&gt;</code> — substitua <code>$KEY</code> pela sua API key.</p>
+      <p>Base URL: <code>https://chatgpt-openai-proxy.fastapicloud.dev</code> — substitua <code>$KEY</code> pela sua API key.</p>
 
       <p><strong>Chat Completions (OpenAI):</strong></p>
-      <pre><code>curl https://&lt;seu-host&gt;/v1/chat/completions \\
+      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/chat/completions \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "gpt-6-terra", "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
 
       <p><strong>Responses API (OpenAI):</strong></p>
-      <pre><code>curl https://&lt;seu-host&gt;/v1/responses \\
+      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/responses \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "gpt-6-terra", "input": "Olá!"}'</code></pre>
 
       <p><strong>Messages (Anthropic):</strong></p>
-      <pre><code>curl https://&lt;seu-host&gt;/v1/messages \\
+      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/messages \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "claude-sonnet-4-5", "max_tokens": 1024, "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
 
       <p><strong>Listagem de modelos:</strong></p>
-      <pre><code>curl https://&lt;seu-host&gt;/v1/models -H "Authorization: Bearer $KEY"</code></pre>
+      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/models -H "Authorization: Bearer $KEY"</code></pre>
 
       <p><strong>Saúde (público):</strong></p>
-      <pre><code>curl https://&lt;seu-host&gt;/health</code></pre>
+      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/health</code></pre>
     </section>
 
     <section class="panel rise" style="--d: 7" id="traducao-responses">
@@ -245,14 +245,14 @@ def _render_home_html() -> str:
         você — como se nunca tivesse sido cadastrado:
       </p>
       <ul>
-        <li><code>GET /logout</code> mostra uma página para colar a API key e confirmar a exclusão.</li>
+        <li><code>GET /logout</code> mostra uma página para colar a API key e segurar o botão para confirmar a exclusão.</li>
         <li><code>POST /logout</code> com <code>Authorization: Bearer &lt;key&gt;</code> deleta o usuário, as credenciais OAuth e <strong>TODAS</strong> as API keys dele do banco, em uma única operação.</li>
         <li>A API key para de funcionar <strong>na hora</strong> (passa a retornar 401).</li>
         <li>A exclusão é <strong>irreversível</strong> — não há como desfazer.</li>
         <li>Para voltar a usar o proxy, basta fazer <a href="/login">/login</a> de novo (será criado um novo usuário com uma nova key).</li>
       </ul>
       <p><strong>Exemplo:</strong></p>
-      <pre><code>curl -X POST https://&lt;seu-host&gt;/logout \\
+      <pre><code>curl -X POST https://chatgpt-openai-proxy.fastapicloud.dev/logout \\
   -H "Authorization: Bearer $KEY"</code></pre>
     </section>
 
