@@ -10,6 +10,11 @@ Regras preservadas do código original:
 - ``tools[].function`` é achatado para ``tools[].{name, description, parameters}``.
 - ``max_tokens`` / ``max_completion_tokens`` **não** são repassados: o backend
   do plano rejeita ``max_output_tokens`` ("Unsupported parameter").
+- ``reasoning_effort`` (string) e ``reasoning.{effort}`` (objeto) viram
+  ``reasoning.{effort}``: sem esse repasse o backend trata reasoning como
+  ativo e rejeita ``temperature != 1``. Com effort ``none`` o inverso vale —
+  o backend rejeita qualquer ``temperature`` ("Unsupported parameter"), então
+  o campo é removido e o default do modelo prevalece.
 - vision: partes ``text`` viram ``input_text`` e ``image_url`` viram
   ``input_image`` (formato da Responses API).
 """
@@ -39,6 +44,13 @@ def chat_to_responses(request: dict[str, Any]) -> dict[str, Any]:
         payload["temperature"] = request["temperature"]
     if request.get("top_p") is not None:
         payload["top_p"] = request["top_p"]
+    reasoning = _convert_reasoning(request)
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+    if reasoning == {"effort": "none"}:
+        # Com effort "none" o backend Codex rejeita o parâmetro temperature
+        # em qualquer valor ("Unsupported parameter").
+        payload.pop("temperature", None)
     if request.get("stream"):
         payload["stream"] = True
 
@@ -179,6 +191,22 @@ def _extract_text(content: Any) -> str | None:
             for part in content
             if isinstance(part, dict) and part.get("type") in ("text", "input_text")
         )
+    return None
+
+
+def _convert_reasoning(request: dict[str, Any]) -> dict[str, Any] | None:
+    """Mapeia reasoning do Chat Completions para o objeto da Responses API.
+
+    O backend Codex (e a validação do LiteLLM) rejeita ``temperature != 1``
+    quando reasoning está ativo; só ``effort == "none"`` permite outro valor
+    de temperature. Ver GitHub BerriAI/litellm#39280.
+    """
+    reasoning = request.get("reasoning")
+    if isinstance(reasoning, dict) and isinstance(reasoning.get("effort"), str):
+        return {"effort": reasoning["effort"]}
+    effort = request.get("reasoning_effort")
+    if isinstance(effort, str):
+        return {"effort": effort}
     return None
 
 

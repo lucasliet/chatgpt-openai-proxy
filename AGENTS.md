@@ -35,6 +35,7 @@
 - Redirect OAuth real é `http://localhost:1455/auth/callback`; a porta é configurável via `OAUTH_CALLBACK_PORT` mas mudá-la provavelmente quebra o fluxo (whitelisting Codex).
 - `chat_to_responses` sempre envia `store: false`; fallback `"You are a helpful assistant."` quando não há system/developer (backend rejeita `instructions` vazio).
 - system/developer → `instructions` com `\n\n`; `tool` → `function_call_output`; `tools[].function` achatado; `max_completion_tokens` sobrescreve `max_tokens`.
+- `reasoning_effort`/`reasoning.effort` do Chat Completions é repassado como `reasoning.{effort}` — sem isso o backend trata reasoning como ativo e rejeita `temperature != 1`. Com effort `none` o `temperature` é dropado (backend rejeita o parâmetro em qualquer valor).
 - Streams de chat terminam com `data: [DONE]\n\n`; streams Anthropic usam linha `event:` (`message_start`/`content_block_*`/`message_delta`/`message_stop`).
 - Engine upstream em `app/codex.py`: `LiteLLMEngine` (default) e `HttpxEngine` (`UPSTREAM_ENGINE=httpx`), mesma interface (`responses` / `responses_stream`).
 

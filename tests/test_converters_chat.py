@@ -100,6 +100,48 @@ class TestChatToResponses:
         assert payload["top_p"] == 0.9
         assert payload["stream"] is True
 
+    def test_reasoning_effort_none_droppa_temperature(self):
+        # Com effort "none" o backend rejeita qualquer temperature
+        # ("Unsupported parameter") — só o default do modelo vale.
+        payload = chat_to_responses(
+            {
+                "model": "m",
+                "messages": [],
+                "temperature": 0.2,
+                "reasoning_effort": "none",
+            }
+        )
+        assert payload["reasoning"] == {"effort": "none"}
+        assert "temperature" not in payload
+
+    def test_reasoning_ativo_mantem_temperature(self):
+        payload = chat_to_responses(
+            {
+                "model": "m",
+                "messages": [],
+                "temperature": 1,
+                "reasoning_effort": "low",
+            }
+        )
+        assert payload["reasoning"] == {"effort": "low"}
+        assert payload["temperature"] == 1
+
+    def test_reasoning_objeto_tem_effort_repassado(self):
+        payload = chat_to_responses(
+            {
+                "model": "m",
+                "messages": [],
+                "temperature": 0.2,
+                "reasoning": {"effort": "none"},
+            }
+        )
+        assert payload["reasoning"] == {"effort": "none"}
+        assert "temperature" not in payload
+
+    def test_sem_reasoning_omite_campo(self):
+        payload = chat_to_responses({"model": "m", "messages": []})
+        assert "reasoning" not in payload
+
     def test_vision_text_e_image_url_viram_input(self):
         payload = chat_to_responses(
             {
