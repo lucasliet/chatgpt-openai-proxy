@@ -107,7 +107,7 @@ curl https://<app>.fastapicloud.dev/v1/messages \
 
 Streaming (`"stream": true`) funciona nos três endpoints.
 
-O endpoint Anthropic aceita o wire format Messages, mas o modelo upstream continua sendo do ChatGPT Plan. Se o cliente mandar um nome fora da allowlist (ex.: `claude-*`), o proxy usa `DEFAULT_MODEL` (`gpt-6.1-sol` por padrão) e ecoa o nome pedido na resposta.
+O endpoint Anthropic aceita o wire format Messages; o `model` segue para o Codex como nos demais endpoints — use um modelo do ChatGPT Plan (ex.: `gpt-6.1-sol`).
 
 Compatibilidade com clientes oficiais:
 
@@ -131,7 +131,6 @@ client.messages.create(model="gpt-6.1-sol", max_tokens=1024, messages=[...])
 | `DATABASE_URL` | — (SQLite local) | Postgres em produção; sem definir, usa `CHATGPT_PROXY_HOME/proxy.db` |
 | `CHATGPT_PROXY_HOME` | `~/.config/chatgpt-proxy` | Diretório do armazenamento local |
 | `UPSTREAM_ENGINE` | `litellm` | `litellm` (default) ou `httpx` |
-| `DEFAULT_MODEL` | `gpt-6.1-sol` | Modelo upstream quando o pedido está fora da allowlist (ex.: `claude-*`) |
 | `ADMIN_API_KEY` | — (gerada no boot) | Chave dos endpoints `/admin/*` |
 | `COOKIE_SECRET` | dev | Segredo do cookie de sessão do `/login` |
 | `CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Backend do plano ChatGPT |

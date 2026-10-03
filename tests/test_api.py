@@ -233,7 +233,7 @@ class TestAnthropicEndpoint:
             "/v1/messages",
             headers=auth_headers,
             json={
-                "model": "claude-sonnet-4-5",
+                "model": "gpt-6.1-sol",
                 "max_tokens": 1024,
                 "system": "Seja breve.",
                 "messages": [{"role": "user", "content": "diz oi"}],
@@ -243,8 +243,7 @@ class TestAnthropicEndpoint:
         body = response.json()
         assert body["type"] == "message"
         assert body["role"] == "assistant"
-        # Modelo solicitado é ecoado para compatibilidade com clientes Claude.
-        assert body["model"] == "claude-sonnet-4-5"
+        assert body["model"] == "gpt-6.1-sol"
         assert body["content"] == [{"type": "text", "text": "Olá"}]
         # max_tokens do cliente não é repassado (backend rejeita max_output_tokens).
         sent = json.loads(route.calls.last.request.content)
@@ -253,7 +252,7 @@ class TestAnthropicEndpoint:
         assert body["stop_reason"] == "end_turn"
         assert body["usage"] == {"input_tokens": 10, "output_tokens": 5}
 
-        # Upstream recebeu o default_model (claude-* não está na allowlist).
+        # Modelo do request segue para o upstream sem rewrite.
         sent = json.loads(route.calls.last.request.content)
         assert sent["model"] == "gpt-6.1-sol"
         assert sent["instructions"] == "Seja breve."
@@ -266,7 +265,7 @@ class TestAnthropicEndpoint:
             "/v1/messages",
             headers=auth_headers,
             json={
-                "model": "claude-sonnet-4-5",
+                "model": "gpt-6.1-sol",
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": "oi"}],
                 "stream": True,

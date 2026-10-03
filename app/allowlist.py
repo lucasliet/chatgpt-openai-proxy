@@ -31,8 +31,3 @@ def list_allowed_models() -> dict:
             for model_id in ALLOWED_MODELS
         ],
     }
-
-
-def is_allowed_model(model: str) -> bool:
-    """Indica se o modelo pertence à allowlist do ChatGPT Plan."""
-    return model in ALLOWED_MODELS

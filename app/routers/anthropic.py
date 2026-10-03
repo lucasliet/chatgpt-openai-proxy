@@ -6,10 +6,8 @@ Completions e devolve a resposta no formato Anthropic — JSON ou streaming SSE
 com os eventos oficiais (``message_start``, ``content_block_*``,
 ``message_delta``, ``message_stop``).
 
-Clientes Anthropic costumam fixar nomes de modelo ``claude-*``; quando o
-modelo pedido não está na allowlist do ChatGPT Plan, o ``default_model``
-(configurável via env) é usado upstream e o modelo solicitado é ecoado na
-resposta para manter a compatibilidade com os clientes.
+O ``model`` do request é repassado ao upstream como nos demais endpoints —
+clientes Anthropic precisam enviar um modelo do ChatGPT Plan.
 """
 
 from typing import Annotated, Any
@@ -18,9 +16,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
-from ..allowlist import is_allowed_model
 from ..codex import Engine, UpstreamError
-from ..config import get_settings
 from ..converters.anthropic import (
     anthropic_to_chat,
     chat_chunks_to_anthropic_events,
@@ -44,24 +40,17 @@ async def create_message(
     session: Annotated[Session, Depends(get_session)],
     credentials: Annotated[Credentials, Depends(require_user_credentials)],
 ):
-    settings = get_settings()
     engine: Engine = request.app.state.engine
     body: dict[str, Any] = await request.json()
-
-    requested_model = body.get("model") or settings.default_model
-    upstream_model = (
-        requested_model
-        if is_allowed_model(requested_model)
-        else settings.default_model
-    )
+    model = body.get("model") or ""
 
     chat = anthropic_to_chat(body)
-    chat["model"] = upstream_model
+    chat["model"] = model
     payload = chat_to_responses(chat)
 
     if body.get("stream"):
         return StreamingResponse(
-            _anthropic_stream(engine, credentials, payload, requested_model),
+            _anthropic_stream(engine, credentials, payload, model),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
@@ -78,7 +67,7 @@ async def create_message(
         return upstream_error_response(
             UpstreamError(502, "stream encerrada sem response.completed")
         )
-    return JSONResponse(chat_to_anthropic(responses_to_chat(response), requested_model))
+    return JSONResponse(chat_to_anthropic(responses_to_chat(response), model))
 
 
 async def _anthropic_stream(

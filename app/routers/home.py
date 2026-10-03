@@ -233,7 +233,7 @@ def _render_home_html() -> str:
         <li>Nos clientes Anthropic, <code>max_tokens</code> vira <code>max_completion_tokens</code> internamente — mas <strong>nenhum limite de tokens chega ao backend</strong>: o plano rejeita <code>max_output_tokens</code> ("Unsupported parameter").</li>
         <li><code>reasoning_effort</code> (string) e <code>reasoning.effort</code> (objeto) são repassados como <code>reasoning.effort</code>. Sem esse repasse, o backend trata reasoning como ativo e rejeita <code>temperature != 1</code>; com effort <code>none</code> o inverso vale — o backend rejeita qualquer <code>temperature</code>, então o campo é removido.</li>
         <li>Streams de chat terminam com <code>data: [DONE]</code>; streams Anthropic usam eventos SSE (<code>message_start</code>, <code>content_block_*</code>, <code>message_delta</code>, <code>message_stop</code>).</li>
-        <li>O proxy só fala com modelos do ChatGPT Plan. Se o cliente pedir um nome fora da allowlist (SDKs Anthropic costumam mandar <code>claude-*</code>), o upstream usa <code>DEFAULT_MODEL</code> (<code>gpt-6.1-sol</code> por padrão) e a resposta ecoa o nome que o cliente pediu.</li>
+        <li>O <code>model</code> é repassado ao Codex em todos os endpoints (incluindo Anthropic Messages). Use um modelo do ChatGPT Plan — nomes <code>claude-*</code> não são traduzidos.</li>
       </ul>
     </section>
 
