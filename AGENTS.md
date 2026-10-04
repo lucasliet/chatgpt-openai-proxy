@@ -39,6 +39,7 @@
 - Config 100% por env vars (pydantic-settings); nada de segredos em arquivo versionado.
 - A plataforma faz autoscaling multi-instância com deploys zero-downtime: nada de estado em disco/memória compartilhado. Em produção `DATABASE_URL` vem da integração Neon. `init_db()` usa `create_all` + migração de colunas idempotente (`_USER_COLUMN_MIGRATIONS`) — não quebrar a idempotência.
 - Se `ADMIN_API_KEY` não estiver definida, uma chave é gerada por instância no boot (impressa nos logs). Em produção multi-instância a env é obrigatória.
+- **Acompanhar deploy após push na main**: o push dispara deploy automático (integração GitHub do FastAPI Cloud); sempre conferir: aguardar ~1 min, rodar `uv run fastapi cloud deployments list` e `uv run fastapi cloud deployments get <id-do-mais-recente>` até o status ficar `success`. Se falhar, ver `uv run fastapi cloud deployments build-logs <id>` e logs do app em `uv run fastapi cloud logs` (`--no-follow` para buscar e sair). `uv run fastapi deploy` sem `--no-wait` já aguarda o status até concluir.
 
 ## Storage local (sem DATABASE_URL)
 
