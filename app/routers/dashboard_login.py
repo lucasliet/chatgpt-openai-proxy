@@ -8,6 +8,7 @@ from .theme import (
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
     THEME_TOGGLE_SCRIPT,
+    favicon_link,
 )
 
 
@@ -21,12 +22,14 @@ def render_dashboard_login(request: Request, csrf_token: str, error: str | None 
     status = f'<p class="status err" role="alert">{html.escape(error)}</p>' if error else ""
     login_path = html.escape(dashboard_route_path(request, "dashboard_login_submit"), quote=True)
     home_path = html.escape(dashboard_route_path(request, "home_page"), quote=True)
+    root_path = html.escape(request.scope.get("root_path", "").rstrip("/"), quote=True)
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Consulte seu consumo</title>
+  {favicon_link(root_path)}
   {THEME_HEAD_SCRIPT}
   <style>{BASE_CSS}{THEME_TOGGLE_CSS}
     .narrow {{ max-width: 640px; }}

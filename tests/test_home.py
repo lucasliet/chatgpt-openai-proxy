@@ -7,6 +7,47 @@ from fastapi.testclient import TestClient
 from app.routers.home import _render_home_html
 
 
+class TestFavicon:
+    def test_rota_serve_svg_com_cache_longo(self, client):
+        # Given: app disponível sem autenticação
+        # When: pedir o favicon
+        response = client.get("/favicon.svg")
+
+        # Then: SVG da marca, com cache de 24h
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/svg+xml")
+        assert "max-age=86400" in response.headers["cache-control"]
+        assert "<svg" in response.text
+        assert "#d9e2ec" in response.text
+
+    def test_favicon_ico_serve_o_mesmo_svg(self, client):
+        # Given: browsers que pedem /favicon.ico direto
+        # When: acessar o caminho legado
+        response = client.get("/favicon.ico")
+
+        # Then: mesmo SVG, sem 404
+        assert response.status_code == 200
+        assert "<svg" in response.text
+
+    def test_paginas_publicas_linkam_o_favicon(self, client):
+        # Given: páginas HTML públicas
+        # When: renderizar home, login e login do dashboard
+        # Then: todas apontam para o favicon SVG
+        for path in ("/", "/login", "/dashboard/login"):
+            page = client.get(path).text
+            assert '<link rel="icon" type="image/svg+xml" href="/favicon.svg">' in page
+
+    def test_link_do_favicon_preserva_root_path(self, client):
+        # Given: app montado sob um prefixo
+        client.app.root_path = "/proxy"
+
+        # When: renderizar a home
+        page = client.get("http://localhost:3000/").text
+
+        # Then: o href do favicon inclui o prefixo
+        assert 'href="/proxy/favicon.svg"' in page
+
+
 class TestHomePage:
     def test_pagina_documentacao_publica(self, client):
         # Given: app disponível sem autenticação

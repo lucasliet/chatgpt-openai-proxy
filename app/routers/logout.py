@@ -25,6 +25,7 @@ from .theme import (
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
     THEME_TOGGLE_SCRIPT,
+    favicon_link,
 )
 
 router = APIRouter()
@@ -78,6 +79,7 @@ def _render_logout_html() -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Logout / Excluir conta</title>
   """
+        + favicon_link()
         + THEME_HEAD_SCRIPT
         + """<style>"""
         + BASE_CSS

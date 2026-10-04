@@ -11,14 +11,16 @@ de tradução e índice).
 import html
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from .theme import (
     BASE_CSS,
+    FAVICON_SVG,
     THEME_HEAD_SCRIPT,
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
     THEME_TOGGLE_SCRIPT,
+    favicon_link,
 )
 
 router = APIRouter()
@@ -28,7 +30,17 @@ router = APIRouter()
 async def home_page(request: Request):
     root_path = request.scope.get("root_path", "").rstrip("/")
     base_url = request.base_url.replace(path=root_path)
-    return _render_home_html(str(base_url).rstrip("/"))
+    return _render_home_html(str(base_url).rstrip("/"), root_path)
+
+
+@router.get("/favicon.svg", include_in_schema=False)
+@router.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(
+        FAVICON_SVG,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 _PAGE_CSS = """
@@ -82,7 +94,7 @@ section[id] { scroll-margin-top: 1.5rem; }
 """
 
 
-def _render_home_html(base_url: str) -> str:
+def _render_home_html(base_url: str, root_path: str = "") -> str:
     return (
         """<!doctype html>
 <html lang="pt-BR">
@@ -91,6 +103,7 @@ def _render_home_html(base_url: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Docs</title>
   """
+        + favicon_link(html.escape(root_path, quote=True))
         + THEME_HEAD_SCRIPT
         + """<style>"""
         + BASE_CSS

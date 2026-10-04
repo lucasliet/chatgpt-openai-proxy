@@ -45,6 +45,7 @@ from .theme import (
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
     THEME_TOGGLE_SCRIPT,
+    favicon_link,
 )
 
 router = APIRouter()
@@ -211,6 +212,7 @@ def _render_login_html(callback_port: int) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Login</title>
+  {favicon_link()}
   {THEME_HEAD_SCRIPT}
   <style>{BASE_CSS}{_PAGE_CSS}{THEME_TOGGLE_CSS}</style>
 </head>

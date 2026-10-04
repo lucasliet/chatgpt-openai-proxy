@@ -34,6 +34,7 @@ from .theme import (
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
     THEME_TOGGLE_SCRIPT,
+    favicon_link,
 )
 from .usage_page import UsagePeriod, render_usage
 
@@ -255,6 +256,7 @@ def _render_login_html(error: str | None = None) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Admin</title>
+  {favicon_link()}
   {THEME_HEAD_SCRIPT}
   <style>{BASE_CSS}{_PAGE_CSS}{THEME_TOGGLE_CSS}</style>
 </head>
@@ -382,6 +384,7 @@ def _render_dashboard(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Backoffice</title>
+  {favicon_link()}
   {THEME_HEAD_SCRIPT}
   <style>{BASE_CSS}{_PAGE_CSS}{THEME_TOGGLE_CSS}</style>
 </head>

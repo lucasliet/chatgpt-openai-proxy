@@ -362,6 +362,32 @@ THEME_TOGGLE_SCRIPT = """<script>
 </script>
 """
 
+# --- Favicon ------------------------------------------------------------------
+# Nó hexagonal de seis pétalas que remete à marca do ChatGPT (sem copiar o
+# traçado, que é marca registrada): arcos de 196° entrelaçados a cada 60°,
+# traço --term-ink sobre fundo --term-bg. Servido pela rota /favicon.svg em
+# home.py; /favicon.ico responde o mesmo SVG para os browsers que o pedem
+# direto.
+
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#10151c"/>
+  <g fill="none" stroke="#d9e2ec" stroke-width="4.6" stroke-linecap="round">
+    <path d="M45.10 43.39 A11.5 11.5 0 1 1 45.10 20.61"/>
+    <path d="M28.69 49.04 A11.5 11.5 0 1 1 48.41 37.65"/>
+    <path d="M15.59 37.65 A11.5 11.5 0 1 1 35.31 49.04"/>
+    <path d="M18.90 20.61 A11.5 11.5 0 1 1 18.90 43.39"/>
+    <path d="M35.31 14.96 A11.5 11.5 0 1 1 15.59 26.35"/>
+    <path d="M48.41 26.35 A11.5 11.5 0 1 1 28.69 14.96"/>
+  </g>
+</svg>
+"""
+
+
+def favicon_link(root_path: str = "") -> str:
+    """Tag <link> do favicon; ``root_path`` deve vir já escapado para HTML."""
+    return f'<link rel="icon" type="image/svg+xml" href="{root_path}/favicon.svg">'
+
+
 HOLD_CONFIRM_SCRIPT = """<script>
   (function setupHoldConfirm() {
     const HOLD_MS = 2000;
