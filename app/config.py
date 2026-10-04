@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     token_encryption_key: str | None = None
 
     codex_base_url: str = "https://chatgpt.com/backend-api/codex"
+    codex_usage_url: str = "https://chatgpt.com/backend-api/wham/usage"
 
     # Engine upstream: "litellm" (default) ou "httpx" (port fiel do proxy
     # original, sem dependência do LiteLLM no caminho da requisição).

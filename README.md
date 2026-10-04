@@ -73,7 +73,13 @@ O mesmo gerenciamento existe em interface web: **`/admin-login`** (entre com a `
 
 ### Telemetria e dashboard
 
-No backoffice, **Ver consumo** abre `/backoffice/users/{id}/usage`. Cada usuário pode consultar somente os próprios dados em **`/dashboard`**, com login OAuth do ChatGPT. Esse fluxo aceita apenas contas já cadastradas: não cria usuário, não atualiza credenciais armazenadas e não gera nem revoga API keys. A sessão expira em 12h; **Sair do dashboard** encerra somente a sessão. Configure `COOKIE_SECRET` com um segredo aleatório de pelo menos 32 caracteres, compartilhado entre réplicas; o dashboard recusa o segredo padrão de desenvolvimento.
+Cada usuário pode consultar somente os próprios dados em **`/dashboard`**, informando sua API key do proxy. Esse acesso não cria usuário, não atualiza credenciais OAuth armazenadas e não gera nem revoga API keys. A chave não é armazenada no navegador; a sessão assinada expira em 12h e perde validade se a chave for revogada. **Sair do dashboard** encerra somente a sessão. Configure `COOKIE_SECRET` com um segredo aleatório de pelo menos 32 caracteres, compartilhado entre réplicas; o dashboard recusa o segredo padrão de desenvolvimento.
+
+**Limites da assinatura:** o dashboard também consulta os limites atuais da conta Codex, inclusive consumo fora deste proxy. A seção carrega separadamente da telemetria local e não segue os filtros Hoje/7/30 dias. São exibidos percentuais usados, duração e renovação das janelas, limites adicionais/revisão de código, créditos e disponibilidade de modelos quando informados pelo upstream. Ausência de dados significa indisponibilidade, não saldo zero.
+
+**`GET /v1/usage`** disponibiliza os mesmos dados em JSON, com `Authorization: Bearer <API key do proxy>`. A resposta inclui `available`, `fetched_at` e `usage`; se a consulta falhar, retorna HTTP 503 com `available: false` e `usage: null`. Nenhum token OAuth, email ou identificador de conta upstream é devolvido. A consulta pode renovar automaticamente o token OAuth existente; não cadastra contas nem emite/revoga API keys. Essa renovação não faz parte do login do dashboard.
+
+Os dados filtrados ficam apenas em cache de até 60 segundos por usuário e instância (máximo de 256 entradas), sem histórico ou persistência no banco. Falhas usam TTL menor, de 10 segundos, e falta de credencial não entra em cache. Requisições simultâneas do mesmo usuário compartilham uma única consulta ao upstream. Réplicas consultam o upstream independentemente. O endpoint interno `wham/usage` não tem contrato público estável; falhas não impedem consultar a telemetria local. `CODEX_USAGE_URL` configura seu endereço; ele é independente de `CODEX_BASE_URL` e vale para ambas as engines. Consultas de limites não contam como chamadas de IA.
 
 Persistimos apenas agregados por usuário, hora UTC e modelo efetivamente executado: chamadas de IA concluídas/falhas/interrompidas, tokens de entrada, entrada em cache e saída, chamadas sem uso informado e custo estimado em USD. Streaming e não-streaming usam a mesma captura do upstream. Páginas, login, `/health`, `/v1/models` e requisições rejeitadas antes do upstream não entram no contador. Não guardamos prompts, respostas, payloads, IPs ou ferramentas na telemetria. Sem `usage` informado pelo upstream, o consumo é desconhecido, não uma medição de zero tokens.
 
@@ -145,6 +151,7 @@ client.messages.create(model="gpt-6.1-sol", max_tokens=1024, messages=[...])
 | `COOKIE_SECRET` | dev | Segredo das sessões web; dashboard exige segredo aleatório de pelo menos 32 caracteres, compartilhado entre réplicas |
 | `PRICING_ENABLED` | `true` | Atualização runtime do catálogo models.dev; `false` desliga consultas externas, preservando telemetria e preços já persistidos |
 | `CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Backend do plano ChatGPT |
+| `CODEX_USAGE_URL` | `https://chatgpt.com/backend-api/wham/usage` | Consulta interna de limites da conta Codex |
 
 ## Docker
 
@@ -190,4 +197,4 @@ O LiteLLM é a **engine upstream** (Responses API, `openai/` + `api_base` custom
 
 ## Testes
 
-105 testes: OAuth/PKCE/JWT, conversores, streams SSE, credenciais por usuário (refresh isolado), engines, criptografia dos tokens em repouso, endpoints HTTP e fluxos de login/re-login — tudo com o upstream Codex mockado.
+`uv run pytest`: OAuth/PKCE/JWT, conversores, streams SSE, credenciais por usuário (refresh isolado), engines, criptografia dos tokens em repouso, endpoints HTTP e fluxos de login/re-login — tudo com o upstream Codex mockado.

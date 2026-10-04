@@ -201,14 +201,10 @@ _PAGE_CSS = """
 """
 
 
-def _render_login_html(callback_port: int, dashboard: bool = False) -> str:
-    flow_path = "/dashboard/login" if dashboard else "/login"
-    heading = "Consulte seu consumo" if dashboard else "Conecte sua conta ChatGPT"
-    description = (
-        "Entre com sua conta ChatGPT já cadastrada no proxy. Este acesso não cria conta nem altera API keys."
-        if dashboard
-        else "Autorize o proxy a usar a sua assinatura e receba a API key de acesso. Cada login gera uma nova key e revoga as anteriores."
-    )
+def _render_login_html(callback_port: int) -> str:
+    flow_path = "/login"
+    heading = "Conecte sua conta ChatGPT"
+    description = "Autorize o proxy a usar a sua assinatura e receba a API key de acesso. Cada login gera uma nova key e revoga as anteriores."
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -312,7 +308,6 @@ def _render_login_html(callback_port: int, dashboard: bool = False) -> str:
           throw new Error('Resposta inesperada do servidor (HTTP ' + resp.status + '). Tente novamente em instantes.');
         }}
         if (!resp.ok) throw new Error(data.error?.message || 'Erro');
-        if (data.dashboard) {{ window.location.assign('/dashboard'); return; }}
         showStatus('Login concluído! Conta: ' + (data.accountId || '?') + '. Use a API key abaixo no proxy.', 'ok');
         const box = document.getElementById('apiKeyBox');
         box.textContent = data.apiKey;

@@ -32,8 +32,10 @@ from .routers import (
     logout,
     models,
     responses,
+    subscription,
 )
 from .security import generate_api_key
+from .subscription import SubscriptionService
 from .telemetry import purge_expired
 
 logger = logging.getLogger("chatgpt-proxy")
@@ -84,6 +86,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="chatgpt-openai-proxy", version="1.0.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = build_engine(settings)
+    app.state.subscription = SubscriptionService(settings)
 
     app.add_middleware(
         SessionMiddleware,
@@ -117,6 +120,7 @@ def create_app() -> FastAPI:
     app.include_router(backoffice.router, tags=["backoffice"])
     app.include_router(backoffice.backoffice_router, tags=["backoffice"])
     app.include_router(models.router, prefix="/v1/models", tags=["models"])
+    app.include_router(subscription.router, prefix="/v1/usage", tags=["usage"])
     app.include_router(responses.router, prefix="/v1/responses", tags=["responses"])
     app.include_router(chat.router, prefix="/v1/chat/completions", tags=["chat"])
     app.include_router(anthropic.router, prefix="/v1/messages", tags=["anthropic"])

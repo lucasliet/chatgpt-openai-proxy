@@ -371,9 +371,10 @@ def test_should_require_admin_for_usage_page(client):
         assert f'href="{url}?days={days}" aria-current=page' in response.text
 
 
-def test_should_disclose_telemetry_retention_and_self_service_access(client):
+def test_should_disclose_telemetry_retention_and_user_access(client):
     page = client.get("/").text
-    assert "Telemetria de uso por usuário" in page
+    assert "Telemetria de uso:" in page
+    assert "totais por usuário, hora UTC e modelo executado" in page
     assert "até 30 dias" in page
     assert 'href="/dashboard"' in page
     assert "não uma cobrança da assinatura ChatGPT" in page

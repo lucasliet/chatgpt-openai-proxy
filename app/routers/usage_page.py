@@ -31,6 +31,7 @@ USAGE_CSS = """
 .usage-table th:first-child,.usage-table td:first-child { text-align:left; }
 .usage-legend { display:flex; flex-wrap:wrap; gap:1rem; font-family:var(--font-mono); font-size:.8rem; }
 .usage-legend span { border-bottom:3px solid; }
+progress { width:100%; max-width:32rem; accent-color:var(--link); }
 @media(max-width:600px) { .usage-summary { grid-template-columns:1fr; } }
 """
 
@@ -132,7 +133,7 @@ def model_rows(buckets: list[UsageBucket]) -> str:
     return "".join(rows) or '<tr><td colspan="6">Nenhum consumo registrado.</td></tr>'
 
 
-def render_usage(session: Session, user: User, days: int, admin: bool) -> str:
+def render_usage(session: Session, user: User, days: int, admin: bool, root_path: str = "") -> str:
     now = utcnow()
     end = now.replace(minute=0, second=0, microsecond=0)
     start = (
@@ -153,15 +154,16 @@ def render_usage(session: Session, user: User, days: int, admin: bool) -> str:
     )
     totals = aggregate_usage(buckets)
     cost = format_cost(totals)
-    base = f"/backoffice/users/{user.id}/usage" if admin else "/dashboard"
+    root_path = html.escape(root_path.rstrip("/"), quote=True)
+    base = f"{root_path}/backoffice/users/{user.id}/usage" if admin else f"{root_path}/dashboard"
     filters = "".join(
         f'<a class="btn small ghost" href="{base}?days={period}" {"aria-current=page" if days == period else ""}>{label}</a>'
         for period, label in ((1, "Hoje"), (7, "7 dias"), (30, "30 dias"))
     )
     navigation = (
-        '<a href="/backoffice">← backoffice</a>'
+        f'<a href="{root_path}/backoffice">← backoffice</a>'
         if admin
-        else '<form method="post" action="/dashboard/logout"><button class="btn small ghost">Sair do dashboard</button></form>'
+        else f'<form method="post" action="{root_path}/dashboard/logout"><button class="btn small ghost">Sair do dashboard</button></form>'
     )
     catalog = session.get(PriceCatalog, 1)
     price_date = (
@@ -172,11 +174,38 @@ def render_usage(session: Session, user: User, days: int, admin: bool) -> str:
         if totals["unpriced"]
         else "Todas as chamadas do período têm estimativa."
     )
+    subscription = (
+        ""
+        if admin
+        else f"""
+    <section class="panel" aria-labelledby="subscription-heading">
+      <h2 id="subscription-heading">Limites da assinatura</h2>
+      <p class="muted">Dados atuais da sua conta Codex, incluindo uso fora deste proxy.
+        Independentes do período selecionado e da estimativa de custo abaixo.</p>
+      <div id="subscription-limits" aria-live="polite" data-url="{root_path}/dashboard/limits">
+        <p class="muted">Consultando limites da assinatura…</p>
+      </div>
+      <noscript>Ative JavaScript para consultar os limites da assinatura.</noscript>
+    </section>
+    <script>
+      (async function loadSubscriptionLimits() {{
+        const target = document.getElementById('subscription-limits');
+        try {{
+          const response = await fetch(target.dataset.url, {{redirect: 'error', cache: 'no-store'}});
+          if (!response.ok) throw new Error('Limits unavailable');
+          target.innerHTML = await response.text();
+        }} catch (error) {{
+          target.textContent = 'Limites da assinatura indisponíveis no momento. Sua telemetria local continua disponível.';
+        }}
+      }})();
+    </script>"""
+    )
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Consumo — ChatGPT Proxy</title>{THEME_HEAD_SCRIPT}<style>{BASE_CSS}{USAGE_CSS}{THEME_TOGGLE_CSS}</style></head><body><div class="container">
-    <header class="topbar"><a class="brand" href="/">chatgpt-openai-proxy</a><nav>{navigation}{THEME_TOGGLE_HTML}</nav></header>
+    <header class="topbar"><a class="brand" href="{root_path}/">chatgpt-openai-proxy</a><nav>{navigation}{THEME_TOGGLE_HTML}</nav></header>
     <div class="rise" style="--d: 0"><p class="eyebrow"><span class="tick">///</span> TELEMETRIA · {"BACKOFFICE" if admin else "MINHA CONTA"}</p>
     <h1>Consumo de {html.escape(user.name)}</h1><p class="muted">{start:%d/%m/%Y %H:%M} → {now:%d/%m/%Y %H:%M} UTC · retenção de 30 dias</p></div>
+    {subscription}
     <nav class="usage-filters" aria-label="Período">{filters}</nav>
     <div class="usage-summary rise" style="--d: 1"><div class="panel"><p>Chamadas de IA</p><strong>{totals["calls"]:,}</strong></div>
     <div class="panel"><p>Tokens de entrada + saída</p><strong>{totals["input_tokens"] + totals["output_tokens"]:,}</strong></div>
@@ -187,4 +216,4 @@ def render_usage(session: Session, user: User, days: int, admin: bool) -> str:
     <tbody>{model_rows(buckets)}</tbody></table></div>
     <p class="muted">¹ Cache faz parte da entrada; não é somado novamente. Reasoning faz parte da saída.</p></section>
     <p class="muted">{unknown}</p><p class="muted">Preços OpenAI via models.dev, atualizados em {price_date}. Estimativa histórica calculada por chamada, não representa cobrança da assinatura ChatGPT.</p>
-    <footer class="footer"><a href="/#privacidade">Privacidade e retenção</a><span>Sem conteúdo de conversas armazenado.</span></footer></div>{THEME_TOGGLE_SCRIPT}</body></html>"""
+    <footer class="footer"><a href="{root_path}/#privacidade">Privacidade e retenção</a><span>Sem conteúdo de conversas armazenado.</span></footer></div>{THEME_TOGGLE_SCRIPT}</body></html>"""

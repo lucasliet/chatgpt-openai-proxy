@@ -1,28 +1,19 @@
-import json
+import secrets
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from ..config import get_settings
 from ..database import get_session
-from ..models import User
-from ..oauth import (
-    build_auth_url,
-    exchange_code_for_tokens,
-    generate_code_verifier,
-    generate_state,
-    token_to_credentials,
-)
-from .login import (
-    CompletePayload,
-    _login_error,
-    _parse_callback_url,
-    _render_login_html,
-)
+from ..deps import require_api_key
+from ..models import ApiKey, User
+from ..subscription import SubscriptionService
+from .dashboard_login import dashboard_route_path, render_dashboard_login
+from .login import _login_error
+from .subscription_page import render_subscription
 from .usage_page import UsagePeriod, render_usage
 
 router = APIRouter()
@@ -44,76 +35,77 @@ def require_dashboard_user(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> User:
     if not request.cookies.get(COOKIE):
-        raise HTTPException(status_code=303, headers={"Location": "/dashboard/login"})
+        raise HTTPException(
+            status_code=303,
+            headers={"Location": dashboard_route_path(request, "dashboard_login_page")},
+        )
     try:
         identity = session_signer().loads(request.cookies.get(COOKIE, ""), max_age=SESSION_SECONDS)
         user = session.get(User, identity["id"])
+        api_key = session.get(ApiKey, identity["key"])
         if (
             user
+            and api_key
+            and api_key.user_id == user.id
+            and api_key.revoked_at is None
             and user.account_id == identity["account"]
             and user.created_at.isoformat() == identity["created"]
         ):
             return user
     except (BadSignature, KeyError, TypeError, ValueError):
         pass
-    raise HTTPException(status_code=303, headers={"Location": "/dashboard/login"})
+    raise HTTPException(
+        status_code=303, headers={"Location": dashboard_route_path(request, "dashboard_login_page")}
+    )
 
 
 @router.get("/dashboard/login", response_class=HTMLResponse)
-async def dashboard_login_page():
-    return _render_login_html(get_settings().oauth_callback_port, dashboard=True)
+async def dashboard_login_page(request: Request):
+    token = request.session.setdefault("dashboard_csrf", secrets.token_urlsafe(32))
+    return HTMLResponse(
+        render_dashboard_login(request, token), headers={"Cache-Control": "no-store"}
+    )
 
 
-@router.post("/dashboard/login/start")
-async def dashboard_login_start(request: Request):
-    session_signer()
-    verifier, state = generate_code_verifier(), generate_state()
-    request.session["dashboard_pkce"] = json.dumps({"verifier": verifier, "state": state})
-    return {"authUrl": build_auth_url(get_settings(), verifier, state)}
-
-
-@router.post("/dashboard/login/complete")
-async def dashboard_login_complete(
-    payload: CompletePayload,
+@router.post("/dashboard/login")
+async def dashboard_login_submit(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ):
-    raw = request.session.pop("dashboard_pkce", None)
-    if not raw:
-        raise _login_error("Sessão de login expirada. Reinicie o login.")
-    parsed = _parse_callback_url(payload.callbackUrl.strip())
-    try:
-        pkce = json.loads(raw)
-        if parsed.get("state") != pkce["state"] or "error" in parsed:
-            raise _login_error("Callback inválido ou state mismatch. Reinicie o login.")
-        token = await exchange_code_for_tokens(get_settings(), parsed["code"], pkce["verifier"])
-        credentials = token_to_credentials(token)
-    except (ValueError, KeyError, TypeError):
-        raise _login_error("Sessão OAuth inválida. Reinicie o login.") from None
-    except HTTPException:
-        raise
-    except (httpx.HTTPError, RuntimeError):
+    signer = session_signer()
+    form = await request.form()
+    token = form.get("csrf_token")
+    expected_token = request.session.get("dashboard_csrf")
+    if (
+        not isinstance(token, str)
+        or not isinstance(expected_token, str)
+        or not secrets.compare_digest(token.encode(), expected_token.encode())
+    ):
         raise _login_error(
-            "Não foi possível autenticar com o ChatGPT. Reinicie o login.", 502
-        ) from None
-    user = (
-        session.exec(select(User).where(User.account_id == credentials.account_id)).first()
-        if credentials.account_id
-        else None
-    )
-    if user is None:
-        raise _login_error(
-            "Esta conta ChatGPT não está cadastrada no proxy. Nenhuma conta foi criada.",
-            403,
+            "Sessão de acesso inválida ou expirada. Atualize a página e tente novamente.", 403
         )
-    cookie = session_signer().dumps(
+    key = form.get("key")
+    try:
+        auth = require_api_key(f"Bearer {key.strip()}" if isinstance(key, str) else None, session)
+    except HTTPException as exc:
+        if exc.status_code != 401:
+            raise
+        return HTMLResponse(
+            render_dashboard_login(request, token, error="API key inválida ou revogada."),
+            status_code=401,
+            headers={"Cache-Control": "no-store"},
+        )
+    user = auth.user
+    request.session.pop("dashboard_csrf", None)
+    cookie = signer.dumps(
         {
             "id": user.id,
+            "key": auth.api_key.id,
             "account": user.account_id,
             "created": user.created_at.isoformat(),
         }
     )
-    response = JSONResponse({"dashboard": True})
+    response = RedirectResponse(dashboard_route_path(request, "dashboard_page"), status_code=303)
     response.set_cookie(
         COOKIE,
         cookie,
@@ -128,18 +120,34 @@ async def dashboard_login_complete(
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard_page(
+    request: Request,
     user: Annotated[User, Depends(require_dashboard_user)],
     session: Annotated[Session, Depends(get_session)],
     days: UsagePeriod = UsagePeriod.WEEK,
 ):
     return HTMLResponse(
-        render_usage(session, user, days, admin=False),
+        render_usage(
+            session, user, days, admin=False, root_path=request.scope.get("root_path", "")
+        ),
         headers={"Cache-Control": "no-store"},
     )
 
 
 @router.post("/dashboard/logout")
-async def dashboard_logout():
-    response = RedirectResponse("/dashboard/login", status_code=303)
+async def dashboard_logout(request: Request):
+    response = RedirectResponse(
+        dashboard_route_path(request, "dashboard_login_page"), status_code=303
+    )
     response.delete_cookie(COOKIE)
     return response
+
+
+@router.get("/dashboard/limits", response_class=HTMLResponse)
+async def dashboard_limits(
+    request: Request,
+    user: Annotated[User, Depends(require_dashboard_user)],
+    session: Annotated[Session, Depends(get_session)],
+):
+    service: SubscriptionService = request.app.state.subscription
+    result = await service.get(user, session)
+    return HTMLResponse(render_subscription(result), headers={"Cache-Control": "no-store"})

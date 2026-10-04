@@ -19,6 +19,7 @@ def _setup_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
     # Engine httpx nos testes: interceptável deterministicamente pelo respx.
     monkeypatch.setenv("UPSTREAM_ENGINE", "httpx")
+    monkeypatch.setenv("CODEX_USAGE_URL", "https://usage.example.test/usage")
     monkeypatch.setenv("PRICING_ENABLED", "false")
     monkeypatch.setenv("COOKIE_SECRET", "dashboard-test-secret-not-for-production-123456")
 

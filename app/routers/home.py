@@ -8,7 +8,9 @@ com /login e /logout); aqui ficam só os estilos específicos (hero, diagrama
 de tradução e índice).
 """
 
-from fastapi import APIRouter
+import html
+
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from .theme import (
@@ -23,8 +25,10 @@ router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home_page():
-    return _render_home_html()
+async def home_page(request: Request):
+    root_path = request.scope.get("root_path", "").rstrip("/")
+    base_url = request.base_url.replace(path=root_path)
+    return _render_home_html(str(base_url).rstrip("/"))
 
 
 _PAGE_CSS = """
@@ -78,7 +82,7 @@ section[id] { scroll-margin-top: 1.5rem; }
 """
 
 
-def _render_home_html() -> str:
+def _render_home_html(base_url: str) -> str:
     return (
         """<!doctype html>
 <html lang="pt-BR">
@@ -114,8 +118,9 @@ def _render_home_html() -> str:
       <h1>Uma assinatura ChatGPT. Três protocolos.</h1>
       <p class="sub">
         Autentique sua conta via OAuth, receba uma API key e use a <strong>sua
-        assinatura</strong> em qualquer cliente: o proxy fala a Responses API
-        nativamente e ainda traduz Chat Completions e Anthropic Messages para ela.
+        assinatura</strong> em clientes compatíveis com Responses API,
+        Chat Completions ou Anthropic Messages. O proxy adapta as chamadas
+        para o backend Codex.
       </p>
       <div class="actions">
         <a class="btn" href="/login">Fazer login</a>
@@ -162,10 +167,9 @@ def _render_home_html() -> str:
       <p class="eyebrow"><span class="tick">///</span> 01</p>
       <h2>Como funciona</h2>
       <ol>
-        <li><strong>Login OAuth (PKCE):</strong> cada usuário autoriza o proxy a agir em nome da própria conta ChatGPT em <code>/login</code>. Os tokens OAuth ficam guardados no banco <strong>cifrados em repouso</strong> (Fernet), vinculados ao usuário.</li>
-        <li><strong>API key exibida uma única vez:</strong> ao concluir o login, uma key <code>sk-...</code> é gerada e mostrada na tela — guarde-a, pois ela não é exibida de novo.</li>
-        <li><strong>Bearer key nas chamadas:</strong> os clientes enviam <code>Authorization: Bearer sk-...</code> nos endpoints <code>/v1/*</code>, como em qualquer API OpenAI/Anthropic.</li>
-        <li><strong>Assinatura do próprio usuário upstream:</strong> o proxy resolve a key → usuário → credencial OAuth e chama o backend Codex com a assinatura daquela pessoa, com <strong>refresh automático</strong> do access token (5 minutos antes da expiração).</li>
+        <li><strong>Conexão com o ChatGPT:</strong> o login OAuth (PKCE) autoriza o acesso à sua conta e gera uma API key do proxy.</li>
+        <li><strong>Autenticação das chamadas:</strong> envie <code>Authorization: Bearer sk-...</code> nos endpoints <code>/v1/*</code>.</li>
+        <li><strong>Uso da sua assinatura:</strong> a chave identifica sua conta, e as chamadas ao Codex usam suas credenciais OAuth. O proxy renova o token de acesso automaticamente quando necessário.</li>
       </ol>
     </section>
 
@@ -175,7 +179,7 @@ def _render_home_html() -> str:
       <ol>
         <li>Abra <a href="/login">/login</a> e clique em <strong>Iniciar login com ChatGPT</strong>.</li>
         <li>Autorize o acesso na página do ChatGPT.</li>
-        <li>Quando o navegador falhar ao abrir <code>http://localhost:1455/auth/callback?code=...</code> (<strong>normal em Docker/remoto</strong>), não feche a aba: copie a <strong>URL completa da barra de endereços</strong>.</li>
+        <li>Após a autorização, copie a <strong>URL completa da barra de endereços</strong>, iniciada por <code>http://localhost:1455/auth/callback?code=...</code>. Se a página não abrir, isso é esperado neste fluxo: o que importa é a URL.</li>
         <li>Cole a URL no campo indicado e clique em <strong>Concluir login</strong>.</li>
         <li>Copie a API key <code>sk-...</code> exibida — ela aparece <strong>apenas desta vez</strong>.</li>
       </ol>
@@ -185,41 +189,44 @@ def _render_home_html() -> str:
       <p class="eyebrow"><span class="tick">///</span> 03</p>
       <h2>Rotação de API key</h2>
       <p>
-        Para recuperar acesso quando a key vaza ou se perde, basta fazer
-        <a href="/login">login novamente em /login</a>: um re-login na mesma conta
-        (identificada pelo <code>account_id</code>) <strong>revoga todas as API keys
-        antigas</strong> e emite uma nova. Re-login nunca duplica usuário.
+        Se perder sua chave ou suspeitar de vazamento, faça
+        <a href="/login">login novamente</a> com a mesma conta ChatGPT.
+        Isso <strong>revoga todas as API keys anteriores</strong> e gera uma nova,
+        sem duplicar sua conta no proxy. Atualize a chave nos seus clientes.
       </p>
     </section>
 
     <section class="panel rise" style="--d: 6" id="endpoints">
       <p class="eyebrow"><span class="tick">///</span> 04</p>
       <h2>Endpoints</h2>
-      <p>Base URL: <code>https://chatgpt-openai-proxy.fastapicloud.dev</code> — substitua <code>$KEY</code> pela sua API key.</p>
+      <p>Base URL: <code>__PROXY_BASE_URL__</code> — substitua <code>$KEY</code> pela sua API key.</p>
 
       <p><strong>Chat Completions (OpenAI):</strong></p>
-      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/chat/completions \\
+      <pre><code>curl __PROXY_BASE_URL__/v1/chat/completions \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "gpt-6.1-sol", "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
 
       <p><strong>Responses API (OpenAI):</strong></p>
-      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/responses \\
+      <pre><code>curl __PROXY_BASE_URL__/v1/responses \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "gpt-6.1-sol", "input": "Olá!"}'</code></pre>
 
       <p><strong>Messages (Anthropic):</strong></p>
-      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/messages \\
+      <pre><code>curl __PROXY_BASE_URL__/v1/messages \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "gpt-6.1-sol", "max_tokens": 1024, "messages": [{"role": "user", "content": "Olá!"}]}'</code></pre>
 
       <p><strong>Listagem de modelos:</strong></p>
-      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/v1/models -H "Authorization: Bearer $KEY"</code></pre>
+      <pre><code>curl __PROXY_BASE_URL__/v1/models -H "Authorization: Bearer $KEY"</code></pre>
 
       <p><strong>Saúde (público):</strong></p>
-      <pre><code>curl https://chatgpt-openai-proxy.fastapicloud.dev/health</code></pre>
+      <pre><code>curl __PROXY_BASE_URL__/health</code></pre>
+
+      <p><strong>Limites da assinatura Codex:</strong> percentuais usados, renovação das janelas e créditos quando disponíveis. Incluem uso fora do proxy; não são um histórico de tokens ou custos.</p>
+      <pre><code>curl __PROXY_BASE_URL__/v1/usage -H "Authorization: Bearer $KEY"</code></pre>
     </section>
 
     <section class="panel rise" style="--d: 7" id="traducao-responses">
@@ -227,12 +234,11 @@ def _render_home_html() -> str:
       <h2>Tradução para a Responses API</h2>
       <p>
         O backend do Codex fala <strong>apenas a Responses API</strong>. Quem já fala
-        Responses API usa <code>POST /v1/responses</code> com passthrough direto; para
-        os outros formatos, o proxy traduz Chat Completions e Anthropic Messages —
-        regras aplicadas em <code>chat_to_responses</code>:
+        Responses API usa <code>POST /v1/responses</code>; os demais formatos são
+        convertidos antes do envio. Principais regras de compatibilidade:
       </p>
       <ul>
-        <li>Sempre envia <code>store: false</code> ao backend.</li>
+        <li>As chamadas convertidas usam <code>store: false</code>, exigido pelo backend Codex.</li>
         <li>Mensagens <code>system</code>/<code>developer</code> viram <code>instructions</code>, concatenadas com uma linha em branco; sem nenhuma delas, usa-se o fallback <code>"You are a helpful assistant."</code> (o backend rejeita <code>instructions</code> vazio).</li>
         <li><code>tools[].function</code> é achatado para <code>{name, description, parameters}</code> no formato da Responses API.</li>
         <li>Mensagens com <code>role: "tool"</code> viram itens <code>function_call_output</code> (com <code>call_id</code>).</li>
@@ -247,18 +253,17 @@ def _render_home_html() -> str:
       <p class="eyebrow"><span class="tick">///</span> 06</p>
       <h2>Logout e exclusão de dados</h2>
       <p>
-        O <code>/logout</code> remove permanentemente tudo o que o proxy guarda sobre
-        você — como se nunca tivesse sido cadastrado:
+        Apesar do nome, <code>/logout</code> <strong>exclui sua conta</strong>, não apenas
+        encerra uma sessão. A exclusão do banco ativo é imediata e irreversível.
       </p>
       <ul>
         <li><code>GET /logout</code> mostra uma página para colar a API key e segurar o botão para confirmar a exclusão.</li>
-        <li><code>POST /logout</code> com <code>Authorization: Bearer &lt;key&gt;</code> deleta o usuário, as credenciais OAuth, <strong>TODAS</strong> as API keys e a telemetria dele do banco, em uma única operação.</li>
-        <li>A API key para de funcionar <strong>na hora</strong> (passa a retornar 401).</li>
-        <li>A exclusão é <strong>irreversível</strong> — não há como desfazer.</li>
-        <li>Para voltar a usar o proxy, basta fazer <a href="/login">/login</a> de novo (será criado um novo usuário com uma nova key).</li>
+        <li><code>POST /logout</code> com <code>Authorization: Bearer &lt;key&gt;</code> remove o cadastro, as credenciais OAuth, todas as API keys e a telemetria em uma única transação.</li>
+        <li>As chaves deixam de funcionar (HTTP 401), e as sessões do dashboard perdem validade.</li>
+        <li>Para voltar a usar o proxy, faça <a href="/login">login novamente</a>. Será criada uma nova conta no proxy, com uma nova chave.</li>
       </ul>
       <p><strong>Exemplo:</strong></p>
-      <pre><code>curl -X POST https://chatgpt-openai-proxy.fastapicloud.dev/logout \\
+      <pre><code>curl -X POST __PROXY_BASE_URL__/logout \\
   -H "Authorization: Bearer $KEY"</code></pre>
     </section>
 
@@ -268,30 +273,30 @@ def _render_home_html() -> str:
       <p><strong>O que o proxy guarda no banco:</strong></p>
       <ul>
         <li>Nome de usuário e <code>account_id</code> da conta ChatGPT (identidade estável usada no re-login).</li>
-        <li>Tokens OAuth (<code>access_token</code>/<code>refresh_token</code>) <strong>cifrados em repouso</strong> com Fernet — no banco só existe ciphertext.</li>
+        <li>Tokens OAuth (<code>access_token</code>/<code>refresh_token</code>) <strong>cifrados em repouso</strong> com Fernet.</li>
         <li>API keys <strong>apenas como hash SHA-256</strong> — a chave completa nunca é armazenada.</li>
-        <li>Metadados: labels de keys, timestamps de criação, último login e último uso de cada key.</li>
-        <li><strong>Telemetria de uso por usuário:</strong> agregados por hora UTC e modelo executado, quantidade de chamadas de IA (concluídas, falhas e interrompidas), tokens de entrada, entrada em cache e saída, chamadas sem uso informado e estimativas de custo em USD. Não guardamos registros individuais das conversas.</li>
+        <li>Metadados: rótulos das chaves, datas de criação, último login e último uso de cada chave.</li>
+        <li><strong>Telemetria de uso:</strong> totais por usuário, hora UTC e modelo executado — chamadas concluídas, falhas e interrompidas; tokens de entrada, entrada em cache e saída; chamadas sem uso informado; e estimativas de custo em USD.</li>
       </ul>
-      <p><strong>O que o proxy NÃO guarda:</strong></p>
+      <p><strong>O que o proxy não guarda:</strong></p>
       <ul>
-        <li><strong>Conteúdo das conversas.</strong> Prompts e respostas passam pelo proxy sem serem persistidos; os logs operacionais não incluem payloads.</li>
-        <li>Toda chamada ao backend Codex vai com <code>store: false</code>, para que o upstream também não retenha o histórico pela API.</li>
+        <li><strong>Conteúdo das conversas:</strong> prompts, respostas e conteúdo de ferramentas passam pelo proxy sem serem persistidos. Os logs operacionais não incluem esses conteúdos.</li>
+        <li><strong>Registros individuais de chamadas:</strong> a telemetria guarda apenas os totais descritos acima, sem IPs ou payloads.</li>
       </ul>
       <p><strong>Retenção:</strong></p>
       <ul>
         <li>Dados de cadastro, credenciais e API keys ficam no banco <strong>enquanto a conta existir</strong>.</li>
-        <li>A telemetria mantém uma janela de <strong>até 30 dias</strong>, com limpeza automática por hora enquanto o serviço está ativo e no início da aplicação. Não fica acessível fora dessa janela. Com o serviço desligado, a limpeza acontece na próxima inicialização.</li>
-        <li>A exclusão é imediata, completa e irreversível via <a href="/logout">/logout</a> (self-service) ou pelo operador do serviço.</li>
-        <li>A exclusão remove também toda a telemetria associada ao usuário do banco ativo. Backups e logs de infraestrutura seguem as políticas do provedor de hospedagem.</li>
-        <li>Em caso de vazamento do banco, tokens e keys são inúteis: os tokens exigem a chave Fernet (que fica fora do banco, em env/keyfile) e as keys só existem como hash irreversível.</li>
+        <li>A telemetria fica disponível por <strong>até 30 dias</strong>. Agregados expirados são removidos na inicialização e a cada hora enquanto o serviço está ativo; se estiver desligado, a limpeza ocorre no próximo início.</li>
+        <li>Para remover o cadastro e a telemetria antes disso, use <a href="#logout">/logout</a>, conforme descrito acima. Backups e logs de infraestrutura seguem as políticas da hospedagem.</li>
       </ul>
-      <p><strong>Acesso e finalidade:</strong> a telemetria serve para acompanhar consumo e modelos utilizados. O administrador do serviço consulta os dados internamente; cada usuário consulta somente os próprios dados em <a href="/dashboard">/dashboard</a>, após login com sua conta ChatGPT já cadastrada. Esse login não cria conta, não altera credenciais OAuth armazenadas e não gera nem revoga API keys. A sessão do dashboard expira em 12 horas; sair dela não exclui a conta.</p>
+      <p><strong>Proteção das credenciais:</strong> a chave Fernet fica separada do banco, em variável de ambiente ou arquivo local protegido. As API keys são armazenadas como hash. Essas medidas reduzem o risco em caso de vazamento do banco, mas não substituem a proteção do servidor e de seus segredos.</p>
+      <p><strong>Acesso e finalidade:</strong> a telemetria serve para acompanhar consumo e modelos utilizados. Cada usuário consulta somente os próprios dados em <a href="/dashboard">/dashboard</a>, informando sua API key do proxy. A sessão do dashboard expira em 12 horas e perde validade se a chave for revogada; sair dela não exclui a conta.</p>
       <p><strong>Estimativa de custo:</strong> usamos os preços públicos da API OpenAI via models.dev, considerando entrada, cache, saída e faixas de contexto. É uma referência equivalente de API, <strong>não uma cobrança da assinatura ChatGPT</strong>. Modelos sem preço ou chamadas sem uso informado ficam sem estimativa; totais podem ser parciais. Atualizações de preço não recalculam o histórico. O catálogo público é consultado pelo servidor sem enviar dados de usuários ou conversas ao models.dev.</p>
+      <p><strong>Limites da assinatura:</strong> consultamos a conta Codex com suas credenciais OAuth e mostramos apenas dados de limites, créditos e disponibilidade de modelos, sem email ou identificadores da conta. Esses dados ficam em cache temporário de até 60 segundos por instância, sem histórico no banco. A consulta usa um endpoint interno do ChatGPT e pode ficar indisponível sem afetar a telemetria local.</p>
       <p>
-        <strong>Hospedagem:</strong> o deploy de produção roda no
+        <strong>Hospedagem:</strong> o deploy público deste projeto utiliza o
         <a href="https://fastapicloud.com" target="_blank" rel="noopener">FastAPI Cloud</a>
-        e o banco de dados é o <a href="https://neon.tech" target="_blank" rel="noopener">Neon</a>
+        e o <a href="https://neon.tech" target="_blank" rel="noopener">Neon</a> como banco de dados
         (Postgres gerenciado, integração nativa da plataforma) — infraestrutura, logs de
         plataforma e o armazenamento seguem as políticas deles. Detalhes na
         <a href="https://fastapicloud.com/legal/privacy-policy/" target="_blank" rel="noopener">política de privacidade do FastAPI Cloud</a>
@@ -304,17 +309,17 @@ def _render_home_html() -> str:
       <p class="eyebrow"><span class="tick">///</span> 08</p>
       <h2>Suporte</h2>
       <p>
-        Encontrou um bug, tem dúvida de uso ou quer pedir uma feature? Abra uma
+        Encontrou um problema, tem uma dúvida ou quer sugerir uma melhoria? Abra uma
         <strong>issue no GitHub</strong>:
       </p>
       <p>
         <a class="btn" href="https://github.com/lucasliet/chatgpt-openai-proxy/issues" target="_blank" rel="noopener">Abrir issue ↗</a>
       </p>
       <p>
-        Ao reportar, inclua o endpoint chamado, o status HTTP recebido e o corpo do erro
-        (nunca a sua API key nem tokens). Antes de abrir issue, vale checar o
-        <a href="/health">/health</a> e refazer o <a href="/login">/login</a> se a key estiver
-        respondendo 401.
+        Informe o endpoint, o status HTTP e a mensagem de erro, removendo chaves,
+        tokens e conteúdo de conversas. Verifique <a href="/health">/health</a> para
+        confirmar que o serviço está disponível. Se sua chave retornar HTTP 401,
+        consulte as orientações de <a href="#rotacao">rotação de API key</a>.
       </p>
     </section>
 
@@ -336,4 +341,4 @@ def _render_home_html() -> str:
         + THEME_TOGGLE_SCRIPT
         + """</body>
 </html>"""
-    )
+    ).replace("__PROXY_BASE_URL__", html.escape(base_url, quote=True))
