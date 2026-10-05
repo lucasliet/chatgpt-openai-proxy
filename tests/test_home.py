@@ -48,6 +48,28 @@ class TestFavicon:
         assert 'href="/proxy/favicon.svg"' in page
 
 
+class TestOgCover:
+    def test_rota_serve_png_com_cache_longo(self, client):
+        # Given: app disponível sem autenticação
+        # When: pedir a cover do OpenGraph
+        response = client.get("/og-cover.png")
+
+        # Then: PNG 1200x640 da marca, com cache de 24h
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert "max-age=86400" in response.headers["cache-control"]
+        assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_home_linka_a_cover_na_url_canonica(self, client):
+        # Given: app disponível sem autenticação
+        # When: renderizar a home
+        body = client.get("/").text
+
+        # Then: og:image e twitter:image apontam para a rota da cover
+        assert '<meta property="og:image" content="http://testserver/og-cover.png">' in body
+        assert '<meta name="twitter:image" content="http://testserver/og-cover.png">' in body
+
+
 class TestHomePage:
     def test_pagina_documentacao_publica(self, client):
         # Given: app disponível sem autenticação
@@ -67,6 +89,23 @@ class TestHomePage:
         assert "seu-host" not in body
         assert "theme-toggle:active .track" in body
         assert "segurar o botão para confirmar" in body
+
+    def test_pagina_tem_meta_tags_opengraph_e_twitter(self, client):
+        # Given: app disponível sem autenticação
+        # When: acessar a raiz
+        body = client.get("/").text
+
+        # Then: meta tags sociais presentes, com og:url na URL canônica e cover
+        assert '<meta property="og:type" content="website">' in body
+        assert '<meta property="og:site_name" content="chatgpt-openai-proxy">' in body
+        assert '<meta property="og:title" content="ChatGPT Proxy — Docs">' in body
+        assert '<meta property="og:url" content="http://testserver/">' in body
+        assert '<meta name="twitter:card" content="summary">' in body
+        assert '<meta name="twitter:title" content="ChatGPT Proxy — Docs">' in body
+        assert '<meta property="og:image" content="http://testserver/og-cover.png">' in body
+        assert '<meta property="og:image:width" content="1200">' in body
+        assert '<meta property="og:image:height" content="640">' in body
+        assert '<meta name="twitter:image" content="http://testserver/og-cover.png">' in body
 
     def test_pagina_login_tem_fade_out_dos_steps(self, client):
         response = client.get("/login")

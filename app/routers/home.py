@@ -9,9 +9,10 @@ de tradução e índice).
 """
 
 import html
+from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from .theme import (
     BASE_CSS,
@@ -39,6 +40,18 @@ async def favicon():
     return Response(
         FAVICON_SVG,
         media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+_OG_COVER_PATH = Path(__file__).resolve().parent.parent / "assets" / "og-cover.png"
+
+
+@router.get("/og-cover.png", include_in_schema=False)
+async def og_cover():
+    return FileResponse(
+        _OG_COVER_PATH,
+        media_type="image/png",
         headers={"Cache-Control": "public, max-age=86400"},
     )
 
@@ -102,6 +115,21 @@ def _render_home_html(base_url: str, root_path: str = "") -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatGPT Proxy — Docs</title>
+  <meta name="description" content="Autentique sua conta ChatGPT via OAuth, receba uma API key e use a sua assinatura em clientes compatíveis com Responses API, Chat Completions ou Anthropic Messages.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="chatgpt-openai-proxy">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:title" content="ChatGPT Proxy — Docs">
+  <meta property="og:description" content="Autentique sua conta ChatGPT via OAuth, receba uma API key e use a sua assinatura em clientes compatíveis com Responses API, Chat Completions ou Anthropic Messages.">
+  <meta property="og:url" content="__PROXY_BASE_URL__/">
+  <meta property="og:image" content="__PROXY_BASE_URL__/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="640">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="__PROXY_BASE_URL__/og-cover.png">
+  <meta name="twitter:title" content="ChatGPT Proxy — Docs">
+  <meta name="twitter:description" content="Autentique sua conta ChatGPT via OAuth, receba uma API key e use a sua assinatura em clientes compatíveis com Responses API, Chat Completions ou Anthropic Messages.">
   """
         + favicon_link(html.escape(root_path, quote=True))
         + THEME_HEAD_SCRIPT
