@@ -114,6 +114,14 @@ class TestHomePage:
         assert "hideSteps" in response.text
         assert "theme-toggle:active .track" in response.text
 
+    def test_pagina_login_tem_botao_copiar_key(self, client):
+        response = client.get("/login")
+        assert response.status_code == 200
+        assert 'id="apiKeyValue"' in response.text
+        assert 'id="copyKeyBtn"' in response.text
+        assert "copyApiKey" in response.text
+        assert "fallbackCopyText" in response.text
+
     @pytest.mark.parametrize(
         "base_url",
         [

@@ -29,6 +29,7 @@ from ..security import is_admin_key
 from . import admin as admin_api
 from .theme import (
     BASE_CSS,
+    COPY_KEY_SCRIPT,
     HOLD_CONFIRM_SCRIPT,
     THEME_HEAD_SCRIPT,
     THEME_TOGGLE_CSS,
@@ -372,7 +373,12 @@ def _render_dashboard(
 
     keybox_html = ""
     if new_key:
-        keybox_html = f'<div class="keybox">{_esc(new_key)}</div>'
+        keybox_html = (
+            '<div class="keybox"><div class="keybox-row">'
+            f'<span id="apiKeyValue">{_esc(new_key)}</span>'
+            '<button type="button" class="copy-btn" id="copyKeyBtn" onclick="copyApiKey()">copiar</button>'
+            "</div></div>"
+        )
 
     panels = "".join(_user_panel(u, keys_by_user.get(u.id, [])) for u in users)  # type: ignore[attr-defined]
     if not panels:
@@ -420,6 +426,7 @@ def _render_dashboard(
     </footer>
   </div>
   {THEME_TOGGLE_SCRIPT}
+  {COPY_KEY_SCRIPT}
   {HOLD_CONFIRM_SCRIPT}
 </body>
 </html>"""

@@ -176,8 +176,9 @@ class TestBackofficeAcoes:
         # A chave completa aparece nesta resposta (e o redirect seguinte não a repete).
         import re
 
-        found = re.search(r'keybox">(sk-[A-Za-z0-9_-]+)<', response.text)
+        found = re.search(r'id="apiKeyValue">(sk-[A-Za-z0-9_-]+)<', response.text)
         assert found, response.text[:500]
+        assert 'id="copyKeyBtn"' in response.text
         followup = client.get("/backoffice")
         assert found.group(1) not in followup.text
 

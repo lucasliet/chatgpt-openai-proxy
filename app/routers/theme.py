@@ -204,6 +204,31 @@ label { display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--
   word-break: break-all;
 }
 
+/* Linha do keybox com botão de copiar (login e backoffice). */
+.keybox-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+.copy-btn {
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--term-dim);
+  background: transparent;
+  color: var(--term-ink);
+  cursor: pointer;
+  transition: border-color 150ms ease-out, color 150ms ease-out, transform 120ms ease-out;
+}
+.copy-btn:active { transform: scale(0.97); }
+.copy-btn.copied { border-color: var(--term-accent); color: var(--term-accent); }
+@media (hover: hover) and (pointer: fine) {
+  .copy-btn:hover { border-color: var(--term-accent); color: var(--term-accent); }
+}
+
 .status { margin-top: 1rem; padding: 0.75rem 0.9rem; border-radius: var(--radius); font-size: 0.9rem; border: 1px solid transparent; }
 .status.ok { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--ok-ink); }
 .status.err { background: var(--err-bg); color: var(--err-ink); border-color: var(--err-ink); }
@@ -387,6 +412,51 @@ def favicon_link(root_path: str = "") -> str:
     """Tag <link> do favicon; ``root_path`` deve vir já escapado para HTML."""
     return f'<link rel="icon" type="image/svg+xml" href="{root_path}/favicon.svg">'
 
+
+# --- Copiar API key exibida uma única vez -------------------------------------
+# Usado pelo keybox do login e do backoffice. navigator.clipboard só existe em
+# contexto seguro (https/localhost); no acesso por HTTP (LAN/Docker) cai no
+# fallback execCommand com textarea temporária.
+
+COPY_KEY_SCRIPT = """<script>
+  function fallbackCopyText(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function resetCopyBtn() {
+    const btn = document.getElementById('copyKeyBtn');
+    if (!btn) return;
+    btn.textContent = 'copiar';
+    btn.classList.remove('copied');
+  }
+  function copyApiKey() {
+    const key = document.getElementById('apiKeyValue');
+    if (!key || !key.textContent) return;
+    const btn = document.getElementById('copyKeyBtn');
+    const done = function () {
+      btn.textContent = 'copiado ✓';
+      btn.classList.add('copied');
+      setTimeout(resetCopyBtn, 2000);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(key.textContent).then(done, function () {
+        fallbackCopyText(key.textContent);
+        done();
+      });
+    } else {
+      fallbackCopyText(key.textContent);
+      done();
+    }
+  }
+</script>
+"""
 
 HOLD_CONFIRM_SCRIPT = """<script>
   (function setupHoldConfirm() {

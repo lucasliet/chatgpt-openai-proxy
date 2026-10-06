@@ -41,6 +41,7 @@ from ..oauth import (
 from ..security import generate_api_key, hash_api_key, key_prefix
 from .theme import (
     BASE_CSS,
+    COPY_KEY_SCRIPT,
     THEME_HEAD_SCRIPT,
     THEME_TOGGLE_CSS,
     THEME_TOGGLE_HTML,
@@ -252,7 +253,12 @@ def _render_login_html(callback_port: int) -> str:
     </div>
 
     <div id="status" class="status hidden"></div>
-    <div id="apiKeyBox" class="keybox hidden"></div>
+    <div id="apiKeyBox" class="keybox hidden">
+      <div class="keybox-row">
+        <span id="apiKeyValue"></span>
+        <button type="button" class="copy-btn" id="copyKeyBtn" onclick="copyApiKey()">copiar</button>
+      </div>
+    </div>
 
     <footer class="footer">
       <span>chatgpt-openai-proxy</span>
@@ -312,7 +318,8 @@ def _render_login_html(callback_port: int) -> str:
         if (!resp.ok) throw new Error(data.error?.message || 'Erro');
         showStatus('Login concluído! Conta: ' + (data.accountId || '?') + '. Use a API key abaixo no proxy.', 'ok');
         const box = document.getElementById('apiKeyBox');
-        box.textContent = data.apiKey;
+        document.getElementById('apiKeyValue').textContent = data.apiKey;
+        resetCopyBtn();
         box.classList.remove('hidden');
         await hideSteps([document.getElementById('step2'), document.getElementById('step3')]);
       }} catch (e) {{
@@ -343,6 +350,7 @@ def _render_login_html(callback_port: int) -> str:
       el.className = 'status ' + kind;
     }}
   </script>
+  {COPY_KEY_SCRIPT}
   {THEME_TOGGLE_SCRIPT}
 </body>
 </html>"""
