@@ -134,6 +134,9 @@ def test_should_render_refresh_button_and_page_cache(client):
     assert "Atualizar</button>" not in page
     assert "margin-left:auto" in page
     assert "fragmentCache" in page
+    assert "seedCacheFromServerRender()" in page
+    for days in (1, 7, 30):
+        assert "seedCacheFromServerRender()" in client.get(f"/dashboard?days={days}").text
     fragment = client.get("/dashboard?days=1&partial=1").json()["html"]
     assert "data-refresh" in fragment
     assert "fragmentCache" not in fragment

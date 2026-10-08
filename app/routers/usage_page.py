@@ -399,6 +399,13 @@ FILTER_SCRIPT = """<script>
   (function () {
     // Cache do fragmento por período: vive só nesta carga da página (F5 descarta).
     var fragmentCache = {};
+    function seedCacheFromServerRender() {
+      var container = document.getElementById('usage-content');
+      var active = document.querySelector('.usage-filters a[aria-current]');
+      if (container && active) {
+        fragmentCache[active.getAttribute('data-days')] = container.outerHTML;
+      }
+    }
     function applyFragment(html, url) {
       var container = document.getElementById('usage-content');
       container.innerHTML = html;
@@ -443,6 +450,7 @@ FILTER_SCRIPT = """<script>
       loadPeriod(active.getAttribute('data-days'), active.href, null);
     });
     window.addEventListener('popstate', function () { window.location.reload(); });
+    seedCacheFromServerRender();
   })();
 </script>"""
 
