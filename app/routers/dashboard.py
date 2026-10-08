@@ -1,8 +1,9 @@
+import html
 import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlmodel import Session
 
@@ -14,11 +15,23 @@ from ..subscription import SubscriptionService
 from .dashboard_login import dashboard_route_path, render_dashboard_login
 from .login import _login_error
 from .subscription_page import render_subscription
-from .usage_page import UsagePeriod, render_usage
+from .usage_page import UsagePeriod, render_period_content, render_usage
 
 router = APIRouter()
 COOKIE = "dashboard_session"
 SESSION_SECONDS = 12 * 3600
+
+
+def usage_partial(
+    request: Request, session: Session, user: User, days: UsagePeriod, admin: bool
+) -> JSONResponse:
+    """Fragmento JSON da região que depende de ``?days=`` para troca sem recarregar."""
+    root_path = html.escape(request.scope.get("root_path", "").rstrip("/"), quote=True)
+    base = f"{root_path}/backoffice/users/{user.id}/usage" if admin else f"{root_path}/dashboard"
+    return JSONResponse(
+        {"html": render_period_content(session, user, days, base)},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def session_signer() -> URLSafeTimedSerializer:
@@ -125,6 +138,8 @@ def dashboard_page(
     session: Annotated[Session, Depends(get_session)],
     days: UsagePeriod = UsagePeriod.WEEK,
 ):
+    if request.query_params.get("partial") is not None:
+        return usage_partial(request, session, user, days, admin=False)
     return HTMLResponse(
         render_usage(
             session, user, days, admin=False, root_path=request.scope.get("root_path", "")

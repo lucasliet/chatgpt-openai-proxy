@@ -89,6 +89,42 @@ def test_should_accept_every_period_filter(client, days):
 
 
 @respx.mock
+def test_should_serve_period_fragment_without_reloading_whole_page(client):
+    user_id = create_user_with_credentials(client, "alice", account_id="acc-alice")
+    authenticate(client, create_api_key(client, user_id))
+    record_usage(user_id, "alice-model", "completed", {"input_tokens": 10, "output_tokens": 5})
+    response = client.get("/dashboard?days=1&partial=1")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["cache-control"] == "no-store"
+    fragment = response.json()["html"]
+    assert 'id="usage-content"' in fragment
+    assert "alice-model" in fragment
+    assert "Hoje" in fragment
+    for immutable in ("<!doctype", "Limites da assinatura", "Sair do dashboard", "Preços OpenAI"):
+        assert immutable not in fragment
+
+
+@respx.mock
+def test_should_require_session_for_period_fragment(client, user_key):
+    client.cookies.clear()
+    response = client.get("/dashboard?days=7&partial=1", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard/login"
+
+
+@respx.mock
+def test_should_keep_filters_progressive_without_partial(client):
+    user_id = create_user_with_credentials(client, "alice", account_id="acc-alice")
+    authenticate(client, create_api_key(client, user_id))
+    page = client.get("/dashboard").text
+    assert 'data-days="30"' in page
+    assert 'href="/dashboard?days=30"' in page
+    assert "initUsageChart" in page
+    assert "usage-content" in page
+
+
+@respx.mock
 def test_should_logout_session_without_deleting_account(client):
     user_id = create_user_with_credentials(client, "alice", account_id="acc-alice")
     authenticate(client, create_api_key(client, user_id))

@@ -35,6 +35,7 @@ USAGE_CSS = """
 }
 .usage-filters { display:flex; gap:.5rem; flex-wrap:wrap; margin:1.5rem 0; }
 .usage-filters [aria-current] { background:var(--accent); border-color:var(--accent); color:#fff; }
+.usage-filters[aria-busy="true"] { opacity:.55; pointer-events:none; }
 .chart-wrap { position:relative; }
 .usage-chart { width:100%; height:auto; display:block; touch-action:pan-y; }
 .usage-chart text { fill:var(--muted); font-family:var(--font-mono); font-size:12px; }
@@ -143,8 +144,8 @@ def nice_peak(value: int) -> int:
     return 10 * magnitude
 
 
-CHART_SCRIPT = """<script>
-  (function () {
+CHART_INIT_SCRIPT = """<script>
+  function initUsageChart() {
     var dataEl = document.getElementById('usage-chart-data');
     var svg = document.getElementById('usage-chart');
     if (!dataEl || !svg) return;
@@ -219,7 +220,9 @@ CHART_SCRIPT = """<script>
       tooltip.style.top = pxY + 'px';
     });
     svg.addEventListener('pointerleave', hide);
-  })();
+  }
+  window.initUsageChart = initUsageChart;
+  document.addEventListener('DOMContentLoaded', initUsageChart);
 </script>"""
 
 
@@ -299,7 +302,7 @@ def usage_chart(buckets: list[UsageBucket], start: datetime, end: datetime) -> s
     <rect class="chart-hit" x="{CHART_LEFT}" y="{CHART_TOP}" width="{CHART_PLOT_WIDTH}" height="{CHART_PLOT_HEIGHT}" fill="transparent"/>
     </svg>
     <script type="application/json" id="usage-chart-data">{data_json}</script>
-    <div class="usage-legend">{"".join(legend)}</div>{CHART_SCRIPT}</div>"""
+    <div class="usage-legend">{"".join(legend)}</div>{CHART_INIT_SCRIPT}</div>"""
 
 
 def format_cost(usage: UsageTotals) -> str:
@@ -319,8 +322,15 @@ def model_rows(buckets: list[UsageBucket]) -> str:
     return "".join(rows) or '<tr><td colspan="6">Nenhum consumo registrado.</td></tr>'
 
 
-def render_usage(session: Session, user: User, days: int, admin: bool, root_path: str = "") -> str:
-    now = utcnow()
+def render_period_content(
+    session: Session,
+    user: User,
+    days: int,
+    base: str,
+    now: datetime | None = None,
+) -> str:
+    """Região da página que depende de ``?days=`` — reusada pela página e pelo partial."""
+    now = now or utcnow()
     end = now.replace(minute=0, second=0, microsecond=0)
     start = (
         now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -348,12 +358,69 @@ def render_usage(session: Session, user: User, days: int, admin: bool, root_path
             if totals["unpriced"]
             else ""
         )
-    root_path = html.escape(root_path.rstrip("/"), quote=True)
-    base = f"{root_path}/backoffice/users/{user.id}/usage" if admin else f"{root_path}/dashboard"
     filters = "".join(
-        f'<a class="btn small ghost" href="{base}?days={period}" {"aria-current=page" if days == period else ""}>{label}</a>'
+        f'<a class="btn small ghost" data-days="{period}" href="{base}?days={period}" '
+        f"{'aria-current=page' if days == period else ''}>{label}</a>"
         for period, label in ((1, "Hoje"), (7, "7 dias"), (30, "30 dias"))
     )
+    unknown = (
+        f"{totals['unknown_usage']} chamadas sem uso informado · {totals['unpriced']} sem estimativa. O custo exibido pode ser parcial."
+        if totals["unpriced"]
+        else "Todas as chamadas do período têm estimativa."
+    )
+    return f"""
+      <div id="usage-content">
+      <p class="muted">{start:%d/%m/%Y %H:%M} → {now:%d/%m/%Y %H:%M} UTC · retenção de 30 dias</p>
+      <nav class="usage-filters" aria-label="Período">{filters}</nav>
+      <div class="usage-summary">
+      <div class="panel stat"><p class="stat-label">Chamadas de IA</p><strong>{totals["calls"]:,}</strong>
+        <span class="stat-sub"><span class="ok">{totals["completed"]} concluídas</span> · <span class="err">{totals["failed"]} falhas</span> · {totals["interrupted"]} interrompidas</span></div>
+      <div class="panel stat"><p class="stat-label">Tokens de entrada + saída</p><strong>{totals["input_tokens"] + totals["output_tokens"]:,}</strong>
+        <span class="stat-sub">{totals["input_tokens"]:,} entrada · {totals["output_tokens"]:,} saída</span></div>
+      <div class="panel stat"><p class="stat-label">Custo equivalente de API</p><strong>{cost_main}</strong>{cost_sub}</div></div>
+      <section class="panel"><h2>Tokens por modelo</h2>{usage_chart(buckets, start, end)}</section>
+      <section class="panel"><h2>Detalhamento</h2><div class="usage-table-wrap"><table class="usage-table"><thead><tr><th>Modelo executado</th><th>Chamadas</th><th>Entrada</th><th>Cache¹</th><th>Saída</th><th>Estimativa USD</th></tr></thead>
+      <tbody>{model_rows(buckets)}</tbody></table></div>
+      <p class="muted">¹ Cache faz parte da entrada; não é somado novamente. Reasoning faz parte da saída.</p></section>
+      <p class="muted">{unknown}</p>
+      </div>"""
+
+
+FILTER_SCRIPT = """<script>
+  (function () {
+    document.addEventListener('click', function (event) {
+      var link = event.target.closest ? event.target.closest('a[data-days]') : null;
+      if (!link) return;
+      var container = document.getElementById('usage-content');
+      if (!container || !window.fetch) return;
+      event.preventDefault();
+      var nav = link.closest('.usage-filters');
+      if (nav) nav.setAttribute('aria-busy', 'true');
+      var partialUrl = link.href + (link.href.indexOf('?') > -1 ? '&' : '?') + 'partial=1';
+      fetch(partialUrl, { headers: { Accept: 'application/json' }, redirect: 'error' })
+        .then(function (response) {
+          if (!response.ok) throw new Error('partial request failed');
+          return response.json();
+        })
+        .then(function (data) {
+          container.innerHTML = data.html;
+          history.pushState({}, '', link.href);
+          if (window.initUsageChart) window.initUsageChart();
+        })
+        .catch(function () { window.location.assign(link.href); })
+        .finally(function () {
+          var busy = document.querySelector('.usage-filters[aria-busy="true"]');
+          if (busy) busy.removeAttribute('aria-busy');
+        });
+    });
+    window.addEventListener('popstate', function () { window.location.reload(); });
+  })();
+</script>"""
+
+
+def render_usage(session: Session, user: User, days: int, admin: bool, root_path: str = "") -> str:
+    root_path = html.escape(root_path.rstrip("/"), quote=True)
+    base = f"{root_path}/backoffice/users/{user.id}/usage" if admin else f"{root_path}/dashboard"
     navigation = (
         f'<a href="{root_path}/backoffice">← backoffice</a>'
         if admin
@@ -362,11 +429,6 @@ def render_usage(session: Session, user: User, days: int, admin: bool, root_path
     catalog = session.get(PriceCatalog, 1)
     price_date = (
         catalog.fetched_at.strftime("%d/%m/%Y %H:%M UTC") if catalog else "ainda indisponível"
-    )
-    unknown = (
-        f"{totals['unknown_usage']} chamadas sem uso informado · {totals['unpriced']} sem estimativa. O custo exibido pode ser parcial."
-        if totals["unpriced"]
-        else "Todas as chamadas do período têm estimativa."
     )
     subscription = (
         ""
@@ -394,22 +456,13 @@ def render_usage(session: Session, user: User, days: int, admin: bool, root_path
       }})();
     </script>"""
     )
+    content = render_period_content(session, user, days, base)
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Consumo — ChatGPT Proxy</title>{favicon_link(root_path)}{THEME_HEAD_SCRIPT}<style>{BASE_CSS}{USAGE_CSS}{THEME_TOGGLE_CSS}</style></head><body><div class="container">
     <header class="topbar"><a class="brand" href="{root_path}/">chatgpt-openai-proxy</a><nav>{navigation}{THEME_TOGGLE_HTML}</nav></header>
     <div class="rise" style="--d: 0"><p class="eyebrow"><span class="tick">///</span> TELEMETRIA · {"BACKOFFICE" if admin else "MINHA CONTA"}</p>
-    <h1>Consumo de {html.escape(user.name)}</h1><p class="muted">{start:%d/%m/%Y %H:%M} → {now:%d/%m/%Y %H:%M} UTC · retenção de 30 dias</p></div>
+    <h1>Consumo de {html.escape(user.name)}</h1></div>
     {subscription}
-    <nav class="usage-filters" aria-label="Período">{filters}</nav>
-    <div class="usage-summary rise" style="--d: 1">
-    <div class="panel stat"><p class="stat-label">Chamadas de IA</p><strong>{totals["calls"]:,}</strong>
-      <span class="stat-sub"><span class="ok">{totals["completed"]} concluídas</span> · <span class="err">{totals["failed"]} falhas</span> · {totals["interrupted"]} interrompidas</span></div>
-    <div class="panel stat"><p class="stat-label">Tokens de entrada + saída</p><strong>{totals["input_tokens"] + totals["output_tokens"]:,}</strong>
-      <span class="stat-sub">{totals["input_tokens"]:,} entrada · {totals["output_tokens"]:,} saída</span></div>
-    <div class="panel stat"><p class="stat-label">Custo equivalente de API</p><strong>{cost_main}</strong>{cost_sub}</div></div>
-    <section class="panel rise" style="--d: 2"><h2>Tokens por modelo</h2>{usage_chart(buckets, start, end)}</section>
-    <section class="panel rise" style="--d: 3"><h2>Detalhamento</h2><div class="usage-table-wrap"><table class="usage-table"><thead><tr><th>Modelo executado</th><th>Chamadas</th><th>Entrada</th><th>Cache¹</th><th>Saída</th><th>Estimativa USD</th></tr></thead>
-    <tbody>{model_rows(buckets)}</tbody></table></div>
-    <p class="muted">¹ Cache faz parte da entrada; não é somado novamente. Reasoning faz parte da saída.</p></section>
-    <p class="muted">{unknown}</p><p class="muted">Preços OpenAI via models.dev, atualizados em {price_date}. Estimativa histórica calculada por chamada, não representa cobrança da assinatura ChatGPT.</p>
-    <footer class="footer"><a href="{root_path}/#privacidade">Privacidade e retenção</a><span>Sem conteúdo de conversas armazenado.</span></footer></div>{THEME_TOGGLE_SCRIPT}</body></html>"""
+    {content}
+    <p class="muted">Preços OpenAI via models.dev, atualizados em {price_date}. Estimativa histórica calculada por chamada, não representa cobrança da assinatura ChatGPT.</p>
+    <footer class="footer"><a href="{root_path}/#privacidade">Privacidade e retenção</a><span>Sem conteúdo de conversas armazenado.</span></footer></div>{THEME_TOGGLE_SCRIPT}{FILTER_SCRIPT}</body></html>"""

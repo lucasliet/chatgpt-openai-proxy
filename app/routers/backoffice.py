@@ -27,6 +27,7 @@ from ..database import get_session
 from ..models import ApiKey, User
 from ..security import is_admin_key
 from . import admin as admin_api
+from .dashboard import usage_partial
 from .theme import (
     BASE_CSS,
     COPY_KEY_SCRIPT,
@@ -157,6 +158,7 @@ async def backoffice_create_user(
 
 @backoffice_router.get("/backoffice/users/{user_id}/usage", response_class=HTMLResponse)
 def backoffice_usage(
+    request: Request,
     user_id: int,
     session: Annotated[Session, Depends(get_session)],
     days: UsagePeriod = UsagePeriod.WEEK,
@@ -164,6 +166,8 @@ def backoffice_usage(
     user = session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    if request.query_params.get("partial") is not None:
+        return usage_partial(request, session, user, days, admin=True)
     return HTMLResponse(
         render_usage(session, user, days, admin=True),
         headers={"Cache-Control": "no-store"},
