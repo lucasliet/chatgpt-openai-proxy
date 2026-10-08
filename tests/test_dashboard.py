@@ -125,6 +125,21 @@ def test_should_keep_filters_progressive_without_partial(client):
 
 
 @respx.mock
+def test_should_render_refresh_button_and_page_cache(client):
+    user_id = create_user_with_credentials(client, "alice", account_id="acc-alice")
+    authenticate(client, create_api_key(client, user_id))
+    page = client.get("/dashboard").text
+    assert "data-refresh" in page
+    assert ">↻</button>" in page
+    assert "Atualizar</button>" not in page
+    assert "margin-left:auto" in page
+    assert "fragmentCache" in page
+    fragment = client.get("/dashboard?days=1&partial=1").json()["html"]
+    assert "data-refresh" in fragment
+    assert "fragmentCache" not in fragment
+
+
+@respx.mock
 def test_should_logout_session_without_deleting_account(client):
     user_id = create_user_with_credentials(client, "alice", account_id="acc-alice")
     authenticate(client, create_api_key(client, user_id))

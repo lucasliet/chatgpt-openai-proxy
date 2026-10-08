@@ -36,6 +36,10 @@ USAGE_CSS = """
 .usage-filters { display:flex; gap:.5rem; flex-wrap:wrap; margin:1.5rem 0; }
 .usage-filters [aria-current] { background:var(--accent); border-color:var(--accent); color:#fff; }
 .usage-filters[aria-busy="true"] { opacity:.55; pointer-events:none; }
+.usage-filters [data-refresh] { margin-left:auto; background:rgba(90,110,130,.14); }
+.usage-filters [data-refresh]:hover { background:rgba(90,110,130,.22); border-color:var(--ink); }
+[data-theme="dark"] .usage-filters [data-refresh] { background:rgba(140,160,190,.16); }
+[data-theme="dark"] .usage-filters [data-refresh]:hover { background:rgba(140,160,190,.26); }
 .chart-wrap { position:relative; }
 .usage-chart { width:100%; height:auto; display:block; touch-action:pan-y; }
 .usage-chart text { fill:var(--muted); font-family:var(--font-mono); font-size:12px; }
@@ -363,6 +367,11 @@ def render_period_content(
         f"{'aria-current=page' if days == period else ''}>{label}</a>"
         for period, label in ((1, "Hoje"), (7, "7 dias"), (30, "30 dias"))
     )
+    refresh_button = (
+        '<button type="button" class="btn small ghost" data-refresh '
+        'aria-label="Atualizar os dados do período selecionado" '
+        'title="Atualizar os dados (ignora o cache da página)">↻</button>'
+    )
     unknown = (
         f"{totals['unknown_usage']} chamadas sem uso informado · {totals['unpriced']} sem estimativa. O custo exibido pode ser parcial."
         if totals["unpriced"]
@@ -371,7 +380,7 @@ def render_period_content(
     return f"""
       <div id="usage-content">
       <p class="muted">{start:%d/%m/%Y %H:%M} → {now:%d/%m/%Y %H:%M} UTC · retenção de 30 dias</p>
-      <nav class="usage-filters" aria-label="Período">{filters}</nav>
+      <nav class="usage-filters" aria-label="Período">{filters}{refresh_button}</nav>
       <div class="usage-summary">
       <div class="panel stat"><p class="stat-label">Chamadas de IA</p><strong>{totals["calls"]:,}</strong>
         <span class="stat-sub"><span class="ok">{totals["completed"]} concluídas</span> · <span class="err">{totals["failed"]} falhas</span> · {totals["interrupted"]} interrompidas</span></div>
@@ -388,30 +397,50 @@ def render_period_content(
 
 FILTER_SCRIPT = """<script>
   (function () {
-    document.addEventListener('click', function (event) {
-      var link = event.target.closest ? event.target.closest('a[data-days]') : null;
-      if (!link) return;
+    // Cache do fragmento por período: vive só nesta carga da página (F5 descarta).
+    var fragmentCache = {};
+    function applyFragment(html, url) {
       var container = document.getElementById('usage-content');
-      if (!container || !window.fetch) return;
-      event.preventDefault();
-      var nav = link.closest('.usage-filters');
+      container.innerHTML = html;
+      if (url) history.pushState({}, '', url);
+      if (window.initUsageChart) window.initUsageChart();
+    }
+    function loadPeriod(days, cleanUrl, pushUrl) {
+      if (fragmentCache[days]) { applyFragment(fragmentCache[days], pushUrl); return; }
+      var nav = document.querySelector('.usage-filters');
       if (nav) nav.setAttribute('aria-busy', 'true');
-      var partialUrl = link.href + (link.href.indexOf('?') > -1 ? '&' : '?') + 'partial=1';
+      var partialUrl = cleanUrl + (cleanUrl.indexOf('?') > -1 ? '&' : '?') + 'partial=1';
       fetch(partialUrl, { headers: { Accept: 'application/json' }, redirect: 'error' })
         .then(function (response) {
           if (!response.ok) throw new Error('partial request failed');
           return response.json();
         })
         .then(function (data) {
-          container.innerHTML = data.html;
-          history.pushState({}, '', link.href);
-          if (window.initUsageChart) window.initUsageChart();
+          fragmentCache[days] = data.html;
+          applyFragment(data.html, pushUrl);
         })
-        .catch(function () { window.location.assign(link.href); })
+        .catch(function () { window.location.assign(cleanUrl); })
         .finally(function () {
           var busy = document.querySelector('.usage-filters[aria-busy="true"]');
           if (busy) busy.removeAttribute('aria-busy');
         });
+    }
+    document.addEventListener('click', function (event) {
+      if (!event.target.closest) return;
+      var link = event.target.closest('a[data-days]');
+      var refresh = event.target.closest('[data-refresh]');
+      if (!link && !refresh) return;
+      var container = document.getElementById('usage-content');
+      if (!container || !window.fetch) return;
+      event.preventDefault();
+      if (link) {
+        loadPeriod(link.getAttribute('data-days'), link.href, link.href);
+        return;
+      }
+      var active = document.querySelector('.usage-filters a[aria-current]');
+      if (!active) return;
+      fragmentCache = {};
+      loadPeriod(active.getAttribute('data-days'), active.href, null);
     });
     window.addEventListener('popstate', function () { window.location.reload(); });
   })();
