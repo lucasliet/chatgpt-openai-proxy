@@ -257,7 +257,7 @@ def test_should_render_additional_limits_and_model_availability_safely(
     assert "&lt;script&gt;limit" in response.text
     assert "&lt;script&gt;model" in response.text
     assert "09:00 UTC" in response.text
-    assert 'value="100"' in response.text
+    assert 'aria-valuenow="100"' in response.text
     assert "101% usado" in response.text
 
 

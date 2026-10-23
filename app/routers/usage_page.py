@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from ..models import User, utcnow
 from ..telemetry_models import PriceCatalog, UsageBucket
+from .quota_view import LIMITS_CSS
 from .theme import (
     BASE_CSS,
     THEME_HEAD_SCRIPT,
@@ -495,7 +496,7 @@ def render_usage(session: Session, user: User, days: int, admin: bool, root_path
     )
     content = render_period_content(session, user, days, base)
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Consumo — ChatGPT Proxy</title>{favicon_link(root_path)}{THEME_HEAD_SCRIPT}<style>{BASE_CSS}{USAGE_CSS}{THEME_TOGGLE_CSS}</style></head><body><div class="container">
+    <title>Consumo — ChatGPT Proxy</title>{favicon_link(root_path)}{THEME_HEAD_SCRIPT}<style>{BASE_CSS}{USAGE_CSS}{LIMITS_CSS}{THEME_TOGGLE_CSS}</style></head><body><div class="container">
     <header class="topbar"><a class="brand" href="{root_path}/">chatgpt-openai-proxy</a><nav>{navigation}{THEME_TOGGLE_HTML}</nav></header>
     <div class="rise" style="--d: 0"><p class="eyebrow"><span class="tick">///</span> TELEMETRIA · {"BACKOFFICE" if admin else "MINHA CONTA"}</p>
     <h1>Consumo de {html.escape(user.name)}</h1></div>
